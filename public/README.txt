@@ -1,0 +1,1 @@
+Confira public assets folder. Add logos/images here.

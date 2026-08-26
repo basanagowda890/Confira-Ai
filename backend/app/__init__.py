@@ -1,0 +1,1 @@
+"""Confira-Ai FastAPI application."""

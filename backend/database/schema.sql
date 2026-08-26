@@ -1,0 +1,69 @@
+-- Run this once in Supabase SQL Editor. It creates private data, an idempotent
+-- auth-user profile trigger, core tables, indexes, and RLS policies.
+create extension if not exists "pgcrypto";
+create or replace function public.set_updated_at() returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
+create table if not exists public.profiles (id uuid primary key references auth.users(id) on delete cascade, email text, full_name text not null default '', role text not null default 'candidate' check(role in ('candidate','interviewer')), phone text, headline text, avatar_url text, bio text, location text, skills jsonb not null default '[]', education jsonb not null default '[]', experience jsonb not null default '[]', company text, company_description text, resume_path text, created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+alter table public.profiles add column if not exists headline text;
+create or replace function public.handle_new_user() returns trigger security definer set search_path = public language plpgsql as $$ begin insert into public.profiles(id,email,full_name,role) values(new.id,new.email,coalesce(new.raw_user_meta_data->>'full_name',''),case when new.raw_user_meta_data->>'requested_role' in ('candidate','interviewer') then new.raw_user_meta_data->>'requested_role' else 'candidate' end) on conflict(id) do update set email=excluded.email, full_name=coalesce(nullif(excluded.full_name,''),profiles.full_name); return new; end; $$;
+drop trigger if exists on_auth_user_created on auth.users; create trigger on_auth_user_created after insert on auth.users for each row execute procedure public.handle_new_user();
+create table if not exists public.jobs (id uuid primary key default gen_random_uuid(), title text not null, description text not null default '', department text, location text, employment_type text default 'full_time', experience_level text, required_skills jsonb not null default '[]', preferred_skills jsonb not null default '[]', salary_range text, status text not null default 'draft' check(status in ('draft','published','closed')), created_by uuid not null references profiles(id), created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create table if not exists public.job_applications (id uuid primary key default gen_random_uuid(), job_id uuid not null references jobs(id) on delete cascade, candidate_id uuid not null references profiles(id), status text not null default 'applied' check(status in ('applied','screening','shortlisted','interview','selected','rejected','withdrawn')), created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(job_id,candidate_id));
+create table if not exists public.interviews (id uuid primary key default gen_random_uuid(), job_id uuid not null references jobs(id), candidate_id uuid not null references profiles(id), interviewer_id uuid not null references profiles(id), title text not null, type text not null default 'technical', scheduled_at timestamptz not null, duration_minutes integer not null default 60 check(duration_minutes between 10 and 480), status text not null default 'scheduled' check(status in ('scheduled','live','completed','cancelled')), meeting_room_id text not null unique, instructions text, created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create table if not exists public.interview_questions (id uuid primary key default gen_random_uuid(), interview_id uuid not null references interviews(id) on delete cascade, question text not null, question_type text not null default 'custom', difficulty text default 'medium', expected_answer text, points integer not null default 1 check(points >= 0), order_index integer not null default 0);
+create table if not exists public.interview_answers (id uuid primary key default gen_random_uuid(), interview_id uuid not null references interviews(id) on delete cascade, question_id uuid references interview_questions(id) on delete set null, candidate_id uuid not null references profiles(id), answer_text text, answer_transcript text, audio_url text, video_url text, submitted_at timestamptz not null default now());
+create table if not exists public.interview_results (id uuid primary key default gen_random_uuid(), interview_id uuid not null unique references interviews(id) on delete cascade, candidate_id uuid not null references profiles(id), technical_score numeric check(technical_score between 0 and 100), communication_score numeric check(communication_score between 0 and 100), problem_solving_score numeric check(problem_solving_score between 0 and 100), confidence_score numeric check(confidence_score between 0 and 100), behavioral_score numeric check(behavioral_score between 0 and 100), overall_score numeric check(overall_score between 0 and 100), strengths text, weaknesses text, summary text, recommendation text check(recommendation in ('strong_hire','hire','maybe','no_hire')), risk_level text check(risk_level in ('low','medium','high')), created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create table if not exists public.candidate_scores (id uuid primary key default gen_random_uuid(), candidate_id uuid not null references profiles(id), job_id uuid references jobs(id), score numeric not null check(score between 0 and 100), created_at timestamptz not null default now());
+create table if not exists public.notifications (id uuid primary key default gen_random_uuid(), user_id uuid not null references profiles(id) on delete cascade, type text not null, title text not null, message text not null, link text, read_at timestamptz, created_at timestamptz not null default now());
+alter table public.notifications add column if not exists event_key text;
+create unique index if not exists notifications_event_key_idx on notifications(event_key) where event_key is not null;
+create table if not exists public.monitoring_events (id uuid primary key default gen_random_uuid(), interview_id uuid not null references interviews(id) on delete cascade, candidate_id uuid not null references profiles(id), event_type text not null, severity text not null default 'info' check(severity in ('info','warning','critical','success')), event_data jsonb not null default '{}', timestamp timestamptz not null default now());
+create table if not exists public.practice_tests (id uuid primary key default gen_random_uuid(), title text not null, description text, questions jsonb not null default '[]', duration_minutes integer, is_published boolean not null default false, created_at timestamptz not null default now());
+create table if not exists public.practice_test_attempts (id uuid primary key default gen_random_uuid(), test_id uuid not null references practice_tests(id), candidate_id uuid not null references profiles(id), answers jsonb not null default '[]', score numeric, started_at timestamptz not null default now(), submitted_at timestamptz);
+create table if not exists public.group_discussions (id uuid primary key default gen_random_uuid(), job_id uuid references jobs(id), created_by uuid not null references profiles(id), title text not null, scheduled_at timestamptz, status text not null default 'scheduled' check(status in ('scheduled','live','completed','cancelled')), created_at timestamptz not null default now());
+create table if not exists public.group_discussion_members (discussion_id uuid references group_discussions(id) on delete cascade, candidate_id uuid references profiles(id), joined_at timestamptz default now(), primary key(discussion_id,candidate_id));
+create table if not exists public.reports (id uuid primary key default gen_random_uuid(), interview_id uuid not null unique references interviews(id), owner_id uuid not null references profiles(id), content jsonb not null default '{}', created_at timestamptz not null default now(), updated_at timestamptz not null default now());
+create index if not exists jobs_owner_idx on jobs(created_by,status); create index if not exists applications_candidate_idx on job_applications(candidate_id,status); create index if not exists interviews_candidate_idx on interviews(candidate_id,scheduled_at); create index if not exists interviews_interviewer_idx on interviews(interviewer_id,scheduled_at); create index if not exists monitoring_interview_idx on monitoring_events(interview_id,timestamp desc);
+create unique index if not exists interview_answers_once_idx on interview_answers(interview_id,question_id,candidate_id) where question_id is not null;
+do $$ declare t text; begin foreach t in array array['profiles','jobs','job_applications','interviews','interview_questions','interview_answers','interview_results','candidate_scores','notifications','monitoring_events','practice_tests','practice_test_attempts','group_discussions','group_discussion_members','reports'] loop execute format('alter table public.%I enable row level security', t); end loop; end $$;
+-- The backend uses a service-role client after validating the caller token and enforcing ownership. These policies also protect direct browser access.
+create policy "profile own" on profiles for all using (id=auth.uid()) with check(id=auth.uid());
+create policy "published jobs read" on jobs for select using(status='published' or created_by=auth.uid());
+create policy "candidate own applications" on job_applications for all using(candidate_id=auth.uid()) with check(candidate_id=auth.uid());
+create policy "candidate own interviews" on interviews for select using(candidate_id=auth.uid() or interviewer_id=auth.uid());
+create policy "candidate own answers" on interview_answers for all using(candidate_id=auth.uid()) with check(candidate_id=auth.uid());
+create policy "candidate own notifications" on notifications for select using(user_id=auth.uid());
+create policy "candidate own attempts" on practice_test_attempts for all using(candidate_id=auth.uid()) with check(candidate_id=auth.uid());
+-- Create private buckets in Storage UI: resumes and avatars. Keep both buckets private.
+
+drop policy if exists "profile own" on profiles;
+create policy "profile own" on profiles for all using (id = auth.uid()) with check (id = auth.uid());
+drop policy if exists "published jobs read" on jobs;
+create policy "published jobs read" on jobs for select using (status = 'published' or created_by = auth.uid());
+drop policy if exists "applications participant access" on job_applications;
+create policy "applications participant access" on job_applications for select using (candidate_id = auth.uid() or exists (select 1 from jobs where jobs.id = job_applications.job_id and jobs.created_by = auth.uid()));
+drop policy if exists "applications candidate write" on job_applications;
+create policy "applications candidate write" on job_applications for insert with check (candidate_id = auth.uid());
+drop policy if exists "applications owner update" on job_applications;
+create policy "applications owner update" on job_applications for update using (exists (select 1 from jobs where jobs.id = job_applications.job_id and jobs.created_by = auth.uid()));
+drop policy if exists "interview participant access" on interviews;
+create policy "interview participant access" on interviews for select using (candidate_id = auth.uid() or interviewer_id = auth.uid());
+drop policy if exists "interview questions participant access" on interview_questions;
+create policy "interview questions participant access" on interview_questions for select using (exists (select 1 from interviews where interviews.id = interview_questions.interview_id and (candidate_id = auth.uid() or interviewer_id = auth.uid())));
+drop policy if exists "interview answers participant access" on interview_answers;
+create policy "interview answers participant access" on interview_answers for select using (candidate_id = auth.uid() or exists (select 1 from interviews where interviews.id = interview_answers.interview_id and interviewer_id = auth.uid()));
+drop policy if exists "interview answers candidate write" on interview_answers;
+create policy "interview answers candidate write" on interview_answers for insert with check (candidate_id = auth.uid());
+drop policy if exists "interview results participant access" on interview_results;
+create policy "interview results participant access" on interview_results for select using (candidate_id = auth.uid() or exists (select 1 from interviews where interviews.id = interview_results.interview_id and interviewer_id = auth.uid()));
+drop policy if exists "notifications own" on notifications;
+create policy "notifications own" on notifications for select using (user_id = auth.uid());
+drop policy if exists "monitoring interview access" on monitoring_events;
+create policy "monitoring interview access" on monitoring_events for select using (candidate_id = auth.uid() or exists (select 1 from interviews where interviews.id = monitoring_events.interview_id and interviewer_id = auth.uid()));
+do $$ begin
+	begin alter publication supabase_realtime add table public.job_applications; exception when duplicate_object then null; end;
+	begin alter publication supabase_realtime add table public.interviews; exception when duplicate_object then null; end;
+	begin alter publication supabase_realtime add table public.interview_questions; exception when duplicate_object then null; end;
+	begin alter publication supabase_realtime add table public.interview_answers; exception when duplicate_object then null; end;
+	begin alter publication supabase_realtime add table public.interview_results; exception when duplicate_object then null; end;
+	begin alter publication supabase_realtime add table public.notifications; exception when duplicate_object then null; end;
+end $$;
