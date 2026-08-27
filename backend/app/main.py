@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import get_settings
-from app.routers import health, auth, profiles, jobs, interviews, uploads, notifications, dashboard, ai, features
+from app.routers import health, auth, profiles, jobs, interviews, uploads, notifications, dashboard, ai, features, group_discussions
 
 settings = get_settings()
 app = FastAPI(title="Confira API", version="1.0.0", docs_url="/docs", redoc_url="/redoc")
@@ -20,7 +20,7 @@ origins = list(set([
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://([a-zA-Z0-9_-]+\.)?vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,6 +30,7 @@ app.add_middleware(
 async def unhandled_error(_: Request, __: Exception):
     return JSONResponse(status_code=500, content={"success": False, "message": "An unexpected server error occurred.", "code": "INTERNAL_ERROR"})
 
-for router in (health.router, auth.router, profiles.router, jobs.router, interviews.router, uploads.router, notifications.router, dashboard.router, ai.router, features.router):
+for router in (health.router, auth.router, profiles.router, jobs.router, interviews.router, uploads.router, notifications.router, dashboard.router, ai.router, features.router, group_discussions.router):
     app.include_router(router, prefix="/api")
+
 

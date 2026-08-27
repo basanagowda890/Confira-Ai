@@ -27,6 +27,7 @@ import Recommendation from "./pages/interviewer/Recommendation";
 import Settings from "./pages/interviewer/Settings";
 import GroupDiscussion from "./pages/interviewer/GroupDiscussion";
 import InterviewerNotifications from "./pages/interviewer/InterviewerNotifications";
+import CandidateGroupDiscussion from "./pages/candidate/CandidateGroupDiscussion";
 import CandidateSettings from "./pages/candidate/CandidateSettings";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="profile" element={<CandidateProfile />} />
         <Route path="jobs" element={<CandidateJobs />} />
         <Route path="interviews" element={<CandidateInterviews />} />
+        <Route path="group-discussion" element={<CandidateGroupDiscussion />} />
         <Route path="instructions" element={<InterviewInstructions />} />
         <Route path="system-check" element={<SystemCheck />} />
         <Route path="live" element={<CandidateLiveInterview />} />

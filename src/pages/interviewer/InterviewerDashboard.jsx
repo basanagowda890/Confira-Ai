@@ -28,17 +28,28 @@ export default function InterviewerDashboard() {
   const [jobs, setJobs] = useState([]);
 
   const loadData = useCallback(() => {
-    Promise.all([
+    Promise.allSettled([
       api.get("/interviewer/dashboard"),
       api.get("/profiles/candidates"),
       api.get("/interviews"),
       api.get("/jobs"),
     ])
       .then(([dashRes, candidateRes, interviewRes, jobRes]) => {
-        setDashboard(dashRes.data);
-        setCandidates(candidateRes.data || []);
-        setInterviews(interviewRes.data || []);
-        setJobs(jobRes.data || []);
+        if (dashRes.status === "fulfilled") {
+          setDashboard(dashRes.value?.data || dashRes.value || null);
+        }
+        if (candidateRes.status === "fulfilled") {
+          const list = candidateRes.value?.data || candidateRes.value || [];
+          setCandidates(Array.isArray(list) ? list : []);
+        }
+        if (interviewRes.status === "fulfilled") {
+          const list = interviewRes.value?.data || interviewRes.value || [];
+          setInterviews(Array.isArray(list) ? list : []);
+        }
+        if (jobRes.status === "fulfilled") {
+          const list = jobRes.value?.data || jobRes.value || [];
+          setJobs(Array.isArray(list) ? list : []);
+        }
       })
       .catch(() => {});
   }, []);
@@ -119,23 +130,26 @@ export default function InterviewerDashboard() {
             </div>
             <Link className="text-link" to="/interviewer/interviews">Manage all</Link>
           </div>
-          {upcoming.slice(0, 3).map((interview, idx) => (
-            <div className="live-candidate-row" key={interview.id}>
-              <span className="avatar" style={{ overflow: "hidden" }}>
-                <img src={getPhoto(interview.profiles, idx)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </span>
-              <div>
-                <b>{interview.profiles?.full_name || "Candidate"}</b>
-                <p>{interview.title} · {interview.type}</p>
+          {upcoming.slice(0, 5).map((interview, idx) => {
+            const cand = interview.candidate || interview.profiles || {};
+            return (
+              <div className="live-candidate-row" key={interview.id}>
+                <span className="avatar" style={{ overflow: "hidden" }}>
+                  <img src={getPhoto(cand, idx)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                </span>
+                <div>
+                  <b>{cand.full_name || interview.title || "Candidate"}</b>
+                  <p>{interview.jobs?.title || interview.title} · {interview.type}</p>
+                </div>
+                <Badge tone={interview.status === "live" ? "danger" : "info"}>
+                  {interview.status}
+                </Badge>
+                <Link className="btn btn-outline btn-sm" to={`/interviewer/live?interview=${interview.id}`}>
+                  Open
+                </Link>
               </div>
-              <Badge tone={interview.status === "live" ? "danger" : "info"}>
-                {interview.status}
-              </Badge>
-              <Link className="btn btn-outline" to={`/interviewer/live?interview=${interview.id}`}>
-                Open
-              </Link>
-            </div>
-          ))}
+            );
+          })}
           {!upcoming.length && <p className="empty-state">No upcoming interviews scheduled.</p>}
         </section>
 

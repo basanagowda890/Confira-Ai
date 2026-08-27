@@ -90,13 +90,14 @@ def apply(job_id: str, user: dict = Depends(get_current_user)):
 
     # Notify interviewer who created the position
     if job.get("created_by"):
-        candidate_name = user.get("profile", {}).get("full_name") or "A candidate"
+        candidate_name = user.get("profile", {}).get("full_name") or user.get("email") or "A candidate"
+        job_title = job.get("title", "Position")
         notify(
             job["created_by"],
             f"job:{job_id}:applicant:{user['id']}",
-            "New Job Application",
-            f"{candidate_name} applied for '{job.get('title', 'Position')}'.",
-            "/interviewer/jobs",
+            "New candidate application",
+            f"{candidate_name} applied for {job_title}.",
+            "/interviewer/candidates",
         )
 
     return {"success": True, "data": data}

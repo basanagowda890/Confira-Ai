@@ -312,19 +312,3 @@ def report(interview_id: str, user: dict = Depends(require_role("interviewer")))
     content = {"interview": interview, "scores": result or {}, "monitoring_summary": events, "notice": "AI and score outputs are decision-support signals requiring human review."}
     data = admin_client().table("reports").upsert({"interview_id": interview_id, "owner_id": user["id"], "content": content}, on_conflict="interview_id").execute().data[0]
     return {"success": True, "data": data}
-
-@router.post("/group-discussions", status_code=201)
-def create_discussion(body: dict, user: dict = Depends(require_role("interviewer"))):
-    data = {"title": body.get("title", "Group discussion"), "job_id": body.get("job_id"), "scheduled_at": body.get("scheduled_at"), "created_by": user["id"]}
-    return {"success": True, "data": admin_client().table("group_discussions").insert(data).execute().data[0]}
-
-@router.get("/group-discussions")
-def discussions(user: dict = Depends(get_current_user)):
-    query = admin_client().table("group_discussions").select("*,group_discussion_members(*)")
-    if user["profile"]["role"] == "interviewer": query = query.eq("created_by", user["id"])
-    else: query = query.eq("group_discussion_members.candidate_id", user["id"])
-    return {"success": True, "data": query.execute().data}
-
-@router.post("/group-discussions/{discussion_id}/join")
-def join_discussion(discussion_id: str, user: dict = Depends(require_role("candidate"))):
-    return {"success": True, "data": admin_client().table("group_discussion_members").upsert({"discussion_id": discussion_id, "candidate_id": user["id"]}, on_conflict="discussion_id,candidate_id").execute().data[0]}

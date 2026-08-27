@@ -49,6 +49,42 @@ function formatCountdown(scheduledAt, status) {
   return `Starts in ${secs}s`;
 }
 
+function safeDateParts(dateStr) {
+  if (!dateStr) return { day: "—", month: "TBD" };
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return { day: "—", month: "TBD" };
+  try {
+    return {
+      day: d.getDate(),
+      month: d.toLocaleDateString("en-US", { month: "short" }).toUpperCase()
+    };
+  } catch {
+    return { day: "—", month: "TBD" };
+  }
+}
+
+function safeFormatDate(dateStr, options = { month: "short", day: "numeric", year: "numeric" }) {
+  if (!dateStr) return "TBD";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "TBD";
+  try {
+    return d.toLocaleDateString("en-US", options);
+  } catch {
+    return "TBD";
+  }
+}
+
+function safeFormatTime(dateStr, options = { hour: "numeric", minute: "2-digit" }) {
+  if (!dateStr) return "TBD";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "TBD";
+  try {
+    return d.toLocaleTimeString("en-US", options);
+  } catch {
+    return "TBD";
+  }
+}
+
 function formatStatusBadge(status) {
   switch (status) {
     case "live":
@@ -84,7 +120,7 @@ export default function CandidateInterviews() {
       ]);
 
       if (interviewsRes.status === "fulfilled") {
-        setInterviews(interviewsRes.value.data || []);
+        setInterviews(Array.isArray(interviewsRes.value) ? interviewsRes.value : (interviewsRes.value?.data || []));
       } else {
         const err = interviewsRes.reason;
         if (err?.status === 401) {
@@ -97,10 +133,10 @@ export default function CandidateInterviews() {
       }
 
       if (practiceRes.status === "fulfilled") {
-        setPracticeTests(practiceRes.value.data || []);
+        setPracticeTests(Array.isArray(practiceRes.value) ? practiceRes.value : (practiceRes.value?.data || []));
       }
       if (attemptsRes.status === "fulfilled") {
-        setPracticeAttempts(attemptsRes.value.data || []);
+        setPracticeAttempts(Array.isArray(attemptsRes.value) ? attemptsRes.value : (attemptsRes.value?.data || []));
       }
     } catch {
       setErrorMsg("Unable to load interviews. Please try again.");
@@ -321,16 +357,9 @@ export default function CandidateInterviews() {
             const isLive = i.status === "live";
             const isScheduled = i.status === "scheduled";
             const isCompleted = i.status === "completed";
-            const date = new Date(i.scheduled_at);
-            const dateLabel = date.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            });
-            const timeLabel = date.toLocaleTimeString("en-US", {
-              hour: "numeric",
-              minute: "2-digit",
-            });
+            const dateParts = safeDateParts(i.scheduled_at);
+            const dateLabel = safeFormatDate(i.scheduled_at);
+            const timeLabel = safeFormatTime(i.scheduled_at);
             const interviewerName =
               i.interviewer?.full_name ||
               i.interviewer?.company ||
@@ -356,8 +385,8 @@ export default function CandidateInterviews() {
               >
                 {/* Date Tile */}
                 <div className="date-tile small">
-                  <b>{date.getDate()}</b>
-                  <span>{date.toLocaleDateString("en-US", { month: "short" })}</span>
+                  <b>{dateParts.day}</b>
+                  <span>{dateParts.month}</span>
                 </div>
 
                 {/* Main Info */}
@@ -394,10 +423,14 @@ export default function CandidateInterviews() {
                     View Details
                   </button>
 
-                  {isLive && (
+                  {(isLive || isScheduled) && (
                     <Link
                       className="btn btn-primary join-btn"
                       to={`/candidate/live?interview=${i.id}`}
+                      style={{
+                        background: isLive ? "#ef4444" : "var(--maroon)",
+                        borderColor: isLive ? "#ef4444" : "var(--maroon)"
+                      }}
                     >
                       <Radio size={15} /> Join Interview
                     </Link>
@@ -499,7 +532,7 @@ export default function CandidateInterviews() {
                 <div>
                   <span className="muted" style={{ fontSize: "11px" }}>Date & Time</span>
                   <p style={{ fontWeight: "600", color: "var(--ink)", marginTop: "3px" }}>
-                    {new Date(selectedInterview.scheduled_at).toLocaleDateString("en-US", {
+                    {safeFormatDate(selectedInterview.scheduled_at, {
                       weekday: "short",
                       month: "long",
                       day: "numeric",
@@ -507,10 +540,7 @@ export default function CandidateInterviews() {
                     })}
                   </p>
                   <p style={{ fontSize: "12px", color: "var(--muted)" }}>
-                    {new Date(selectedInterview.scheduled_at).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    {safeFormatTime(selectedInterview.scheduled_at)}
                   </p>
                 </div>
 
@@ -572,11 +602,15 @@ export default function CandidateInterviews() {
                 >
                   <MonitorCheck size={15} /> System Check
                 </button>
-                {selectedInterview.status === "live" && (
+                {(selectedInterview.status === "live" || selectedInterview.status === "scheduled") && (
                   <Link
                     className="btn btn-primary"
                     to={`/candidate/live?interview=${selectedInterview.id}`}
                     onClick={() => setSelectedInterview(null)}
+                    style={{
+                      background: selectedInterview.status === "live" ? "#ef4444" : "var(--maroon)",
+                      borderColor: selectedInterview.status === "live" ? "#ef4444" : "var(--maroon)"
+                    }}
                   >
                     <Radio size={15} /> Join Interview
                   </Link>

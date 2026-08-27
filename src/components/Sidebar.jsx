@@ -8,6 +8,7 @@ const candidateItems = [
   ["profile", "Profile & Resume", UserRound],
   ["jobs", "Jobs", BriefcaseBusiness],
   ["interviews", "My Interviews", CalendarDays],
+  ["group-discussion", "Group Discussion", MessagesSquare],
   ["practice", "Practice Tests", ClipboardCheck],
   ["resources", "Resources", BookOpen],
   ["notifications", "Notifications", Bell],

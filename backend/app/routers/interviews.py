@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 import secrets
 from fastapi import APIRouter, Depends
@@ -263,6 +264,7 @@ def answer(interview_id: str, question_id: str, body: dict, user: dict = Depends
         "candidate_id": user["id"],
         "answer_text": text,
         "answer_transcript": transcript,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
     }
     existing_answer = fetch_maybe_single(
         admin_client()
@@ -353,4 +355,71 @@ def save_recommendation(body: RecommendationInput, user: dict = Depends(require_
     }
     result = admin_client().table("interview_results").upsert(data, on_conflict="interview_id").execute().data[0]
     return {"success": True, "data": result}
+
+@router.post("/{interview_id}/decision")
+def record_decision(interview_id: str, body: dict, user: dict = Depends(require_role("interviewer"))):
+    item = interview_for_user(interview_id, user)
+    if item["interviewer_id"] != user["id"]:
+        raise api_error(403, "Only the assigned interviewer can record a candidate decision.", "OWNERSHIP_FORBIDDEN")
+    
+    decision_val = body.get("decision", "").lower().strip()
+    if decision_val not in ("selected", "rejected"):
+        raise api_error(400, "Decision must be 'selected' or 'rejected'.", "INVALID_DECISION")
+    
+    feedback = (body.get("feedback") or "").strip()
+    score = body.get("overall_score")
+
+    # 1. Update interview status to completed
+    admin_client().table("interviews").update({"status": "completed"}).eq("id", interview_id).execute()
+
+    # 2. Update job application status if exists
+    if item.get("job_id") and item.get("candidate_id"):
+        app = fetch_maybe_single(
+            admin_client().table("job_applications")
+            .select("id")
+            .eq("job_id", item["job_id"])
+            .eq("candidate_id", item["candidate_id"])
+        )
+        if app:
+            admin_client().table("job_applications").update({
+                "status": "selected" if decision_val == "selected" else "rejected"
+            }).eq("id", app["id"]).execute()
+
+    # 3. Upsert interview_results
+    rec_mapping = "strong_hire" if decision_val == "selected" else "no_hire"
+    result_data = {
+        "interview_id": interview_id,
+        "candidate_id": item["candidate_id"],
+        "recommendation": rec_mapping,
+        "summary": feedback or f"Candidate was marked {decision_val.upper()} by interviewer.",
+    }
+    if score is not None:
+        try:
+            result_data["overall_score"] = float(score)
+        except (ValueError, TypeError):
+            pass
+
+    res = admin_client().table("interview_results").upsert(result_data, on_conflict="interview_id").execute().data[0]
+
+    # 4. Notify Candidate
+    job = fetch_maybe_single(admin_client().table("jobs").select("title").eq("id", item.get("job_id")))
+    job_title = job.get("title", "the position") if job else "the position"
+
+    if decision_val == "selected":
+        notif_title = "Congratulations! You have been selected"
+        notif_msg = f"Great news! You have been marked SELECTED for '{job_title}'. {feedback}".strip()
+    else:
+        notif_title = "Interview Update"
+        notif_msg = f"Thank you for participating in the interview for '{job_title}'. Your hiring decision has been updated.".strip()
+
+    notify(
+        item["candidate_id"],
+        f"interview:{interview_id}:decision:{decision_val}",
+        notif_title,
+        notif_msg,
+        "/candidate/interviews"
+    )
+
+    return {"success": True, "decision": decision_val, "data": res}
+
 

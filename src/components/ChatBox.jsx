@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Send } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
-export default function ChatBox({ roomId = "demo-room", sender }) {
-  const storageKey = `confira-chat-${roomId}`;
+export default function ChatBox({ roomId, meetingRoomId, sender, currentUserName }) {
+  const actualRoomId = roomId || meetingRoomId || "demo-room";
+  const actualSender = sender || currentUserName || "Interviewer";
+  const storageKey = `confira-chat-${actualRoomId}`;
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const channelRef = useRef(null);
@@ -23,7 +25,7 @@ export default function ChatBox({ roomId = "demo-room", sender }) {
     event.preventDefault();
     const value = text.trim();
     if (!value) return;
-    const next = [...messages, { id: `${Date.now()}-${Math.random()}`, sender, text: value, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }];
+    const next = [...messages, { id: `${Date.now()}-${Math.random()}`, sender: actualSender, text: value, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }];
     setMessages(next);
     channelRef.current?.send({ type: "broadcast", event: "message", payload: next[next.length - 1] });
     setText("");

@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   Users,
   Sparkles,
-  Radio
+  Radio,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import ChatBox from "../../components/ChatBox";
@@ -112,12 +114,15 @@ export default function CandidateLiveInterview() {
           setInterview(currentInterview);
           // Fetch questions
           const qRes = await api.get(`/interviews/${currentInterview.id}/questions`);
-          setQuestions(qRes.data || []);
+          const qList = Array.isArray(qRes) ? qRes : (qRes?.data || []);
+          setQuestions(qList);
+
           // Fetch existing answers
           const aRes = await api.get(`/interviews/${currentInterview.id}/answers`);
+          const aList = Array.isArray(aRes) ? aRes : (aRes?.data || []);
           const existing = {};
-          (aRes.data || []).forEach(a => {
-            existing[a.question_id] = true;
+          aList.forEach(a => {
+            if (a.question_id) existing[a.question_id] = true;
           });
           setSubmittedAnswers(existing);
         } else {
@@ -484,7 +489,9 @@ export default function CandidateLiveInterview() {
             question_id: question.id,
             question_index: currentQIndex,
             answer: fullAnswer,
-            candidate_id: profile?.id
+            candidate_id: profile?.id,
+            candidate_name: candidateName,
+            submitted_at: new Date().toISOString()
           }
         });
       }
@@ -515,10 +522,37 @@ export default function CandidateLiveInterview() {
   }
 
   function handleNextQuestion() {
-    setCurrentQIndex(prev => Math.min(questions.length - 1, prev + 1));
-    setTranscript("");
-    setInterimText("");
-    setSubmitResult(null);
+    if (currentQIndex < questions.length - 1) {
+      const nextIdx = currentQIndex + 1;
+      setCurrentQIndex(nextIdx);
+      setTranscript("");
+      setInterimText("");
+      setSubmitResult(null);
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: "broadcast",
+          event: "question_selected",
+          payload: { index: nextIdx, question_id: questions[nextIdx]?.id }
+        });
+      }
+    }
+  }
+
+  function handlePrevQuestion() {
+    if (currentQIndex > 0) {
+      const prevIdx = currentQIndex - 1;
+      setCurrentQIndex(prevIdx);
+      setTranscript("");
+      setInterimText("");
+      setSubmitResult(null);
+      if (channelRef.current) {
+        channelRef.current.send({
+          type: "broadcast",
+          event: "question_selected",
+          payload: { index: prevIdx, question_id: questions[prevIdx]?.id }
+        });
+      }
+    }
   }
 
   if (loading) {
@@ -530,7 +564,8 @@ export default function CandidateLiveInterview() {
   }
 
   const currentQ = questions[currentQIndex];
-  const combinedAnswer = transcript + (interimText ? interimText : "");
+  const qText = currentQ ? (currentQ.question || currentQ.question_text || currentQ.text || `Question ${currentQIndex + 1}`) : "";
+  const combinedAnswer = transcript + (interimText ? (transcript ? " " : "") + interimText : "");
 
   return (
     <div className="live-room">
@@ -606,6 +641,21 @@ export default function CandidateLiveInterview() {
             >
               {isScreenSharing ? <MonitorOff size={18} /> : <MonitorUp size={18} />}
             </button>
+            <button
+              onClick={() => {
+                const stage = document.querySelector(".video-stage");
+                if (document.fullscreenElement) {
+                  document.exitFullscreen().catch(() => {});
+                } else if (stage) {
+                  stage.requestFullscreen ? stage.requestFullscreen().catch(() => {}) : stage.webkitRequestFullscreen?.();
+                }
+              }}
+              className="round-control"
+              title="Toggle Fullscreen"
+              type="button"
+            >
+              <Maximize2 size={18} />
+            </button>
             <Link to="/candidate/interviews" className="end-call">
               <PhoneOff size={18} /> Leave Room
             </Link>
@@ -622,14 +672,36 @@ export default function CandidateLiveInterview() {
         <aside className="live-side-panel">
           {/* Question Card */}
           <div className="live-side-card">
-            <div className="live-side-title">
-              <MessageSquare size={18} />
-              <b>Question {questions.length ? `${currentQIndex + 1} of ${questions.length}` : ""}</b>
-              {currentQ && <Badge tone="info" style={{ marginLeft: "auto" }}>{currentQ.difficulty || "Standard"}</Badge>}
+            <div className="live-side-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <MessageSquare size={18} />
+                <b>Question {questions.length ? `${currentQIndex + 1} of ${questions.length}` : ""}</b>
+              </div>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: "3px 7px", fontSize: "11px" }}
+                  onClick={handlePrevQuestion}
+                  disabled={currentQIndex <= 0 || submitting}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ padding: "3px 7px", fontSize: "11px" }}
+                  onClick={handleNextQuestion}
+                  disabled={currentQIndex >= questions.length - 1 || submitting}
+                >
+                  Next
+                </button>
+                {currentQ && <Badge tone="info">{currentQ.difficulty || "Standard"}</Badge>}
+              </div>
             </div>
             {currentQ ? (
-              <p style={{ margin: "8px 0", fontSize: "14px", fontWeight: "600", color: "var(--ink)", lineHeight: "1.5" }}>
-                {currentQ.question}
+              <p style={{ margin: "10px 0 6px", fontSize: "14px", fontWeight: "600", color: "var(--ink)", lineHeight: "1.5" }}>
+                {qText}
               </p>
             ) : (
               <p style={{ color: "var(--muted)", fontSize: "13px" }}>
@@ -699,7 +771,7 @@ export default function CandidateLiveInterview() {
                   </button>
                 </div>
               ) : (
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", color: "var(--success)", fontSize: "13px", fontWeight: "600" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", color: "var(--success)", fontSize: "13px", fontWeight: "600", flexWrap: "wrap" }}>
                   <CheckCircle2 size={16} /> Answer submitted for this question
                   {currentQIndex < questions.length - 1 && (
                     <button
