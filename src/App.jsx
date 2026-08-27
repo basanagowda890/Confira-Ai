@@ -66,7 +66,7 @@ export default function App() {
         <Route path="group-discussion" element={<GroupDiscussion />} />
         <Route path="notifications" element={<InterviewerNotifications />} />
         <Route path="settings" element={<Settings />} />
-      </Route><Route path="/interviewer/live-room" element={<LiveInterviewRoom />} /></Route>
+      </Route><Route path="/interviewer/live-room" element={<LiveMonitoring />} /></Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

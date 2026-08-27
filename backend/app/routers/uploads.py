@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 
 from app.config import get_settings
 from app.core.errors import api_error
-from app.db.supabase import admin_client
+from app.db.supabase import admin_client, fetch_maybe_single
 from app.dependencies import get_current_user, require_role
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
@@ -46,7 +46,7 @@ def _signed_url(bucket: str, path: str) -> str:
 
 
 @router.post("/resume")
-async def upload_resume(file: UploadFile = File(...), user: dict = Depends(require_role("candidate"))):
+async def upload_resume(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     content, extension = await _validated_content(file, RESUME_TYPES, get_settings().max_resume_size_mb * 1024 * 1024, "resume")
     path = _safe_path(user["id"], f"resume{extension}")
     client, old_path = admin_client(), user["profile"].get("resume_path")
@@ -58,21 +58,44 @@ async def upload_resume(file: UploadFile = File(...), user: dict = Depends(requi
 
 
 @router.get("/resume")
-def get_resume(user: dict = Depends(require_role("candidate"))):
+def get_resume(user: dict = Depends(get_current_user)):
     path = user["profile"].get("resume_path")
     if not _owned_path(path, user["id"], "resume"):
         raise api_error(404, "No resume has been uploaded.", "RESUME_NOT_FOUND")
-    return {"success": True, "url": _signed_url("resumes", path), "expires_in": SIGNED_URL_SECONDS}
+    return {"success": True, "url": _signed_url("resumes", path), "path": path, "expires_in": SIGNED_URL_SECONDS}
+
+
+@router.get("/resume/{candidate_id}")
+def get_candidate_resume(candidate_id: str, user: dict = Depends(require_role("interviewer"))):
+    candidate = fetch_maybe_single(admin_client().table("profiles").select("id,resume_path").eq("id", candidate_id).eq("role", "candidate"))
+    if not candidate:
+        raise api_error(404, "Candidate profile not found.", "CANDIDATE_NOT_FOUND")
+    if not candidate.get("resume_path"):
+        raise api_error(404, "No resume has been uploaded for this candidate.", "RESUME_NOT_FOUND")
+    path = candidate["resume_path"]
+    if not _owned_path(path, candidate_id, "resume"):
+        raise api_error(404, "Invalid resume path.", "RESUME_NOT_FOUND")
+
+    has_apps = admin_client().table("job_applications").select("id,jobs!inner(created_by)").eq("candidate_id", candidate_id).eq("jobs.created_by", user["id"]).execute().data
+    has_interviews = admin_client().table("interviews").select("id").eq("candidate_id", candidate_id).eq("interviewer_id", user["id"]).execute().data
+    interviewer_jobs = admin_client().table("jobs").select("id").eq("created_by", user["id"]).execute().data
+
+    if not has_apps and not has_interviews and not interviewer_jobs:
+        raise api_error(403, "You are not authorized to view this candidate's resume.", "OWNERSHIP_FORBIDDEN")
+
+    return {"success": True, "url": _signed_url("resumes", path), "path": path, "expires_in": SIGNED_URL_SECONDS}
 
 
 @router.delete("/resume")
-def delete_resume(user: dict = Depends(require_role("candidate"))):
+def delete_resume(user: dict = Depends(get_current_user)):
     path = user["profile"].get("resume_path")
     if not _owned_path(path, user["id"], "resume"):
         raise api_error(404, "No resume has been uploaded.", "RESUME_NOT_FOUND")
-    client = admin_client(); client.storage.from_("resumes").remove([path])
+    client = admin_client()
+    client.storage.from_("resumes").remove([path])
     client.table("profiles").update({"resume_path": None}).eq("id", user["id"]).execute()
     return {"success": True}
+
 
 
 @router.post("/avatar")

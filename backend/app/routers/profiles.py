@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 from pathlib import PurePosixPath
 from app.dependencies import get_current_user, require_role
-from app.db.supabase import admin_client
+from app.db.supabase import admin_client, fetch_maybe_single
 from app.schemas.common import ProfileUpdate
+from app.core.errors import api_error
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
@@ -19,7 +20,22 @@ def get_profile(user: dict = Depends(get_current_user)): return {"success": True
 
 @router.get("/candidates")
 def list_candidates(user: dict = Depends(require_role("interviewer"))):
-    rows = admin_client().table("profiles").select("id,email,full_name,phone,headline,bio,location,skills,education,experience,avatar_url,updated_at").eq("role", "candidate").order("created_at", desc=True).execute().data
+    rows = admin_client().table("profiles").select("id,email,full_name,phone,headline,bio,location,skills,education,experience,avatar_url,resume_path,created_at,updated_at").eq("role", "candidate").order("created_at", desc=True).execute().data
+    for row in rows:
+        row["avatar_url"] = candidate_avatar_url(row.get("avatar_url"))
+    return {"success": True, "data": rows}
+
+@router.get("/candidates/{candidate_id}")
+def get_candidate_profile(candidate_id: str, user: dict = Depends(require_role("interviewer"))):
+    candidate = fetch_maybe_single(admin_client().table("profiles").select("id,email,full_name,phone,headline,bio,location,skills,education,experience,avatar_url,resume_path,created_at,updated_at").eq("id", candidate_id).eq("role", "candidate"))
+    if not candidate:
+        raise api_error(404, "Candidate not found.", "CANDIDATE_NOT_FOUND")
+    candidate["avatar_url"] = candidate_avatar_url(candidate.get("avatar_url"))
+    return {"success": True, "data": candidate}
+
+@router.get("/interviewers")
+def list_interviewers(user: dict = Depends(get_current_user)):
+    rows = admin_client().table("profiles").select("id,email,full_name,phone,headline,bio,location,company,company_description,avatar_url,created_at").eq("role", "interviewer").order("full_name", desc=False).execute().data
     for row in rows:
         row["avatar_url"] = candidate_avatar_url(row.get("avatar_url"))
     return {"success": True, "data": rows}

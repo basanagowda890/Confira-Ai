@@ -28,7 +28,7 @@ const interviewerItems = [
   ["notifications", "Notifications", Bell],
 ];
 
-export default function Sidebar({ role = "candidate" }) {
+export default function Sidebar({ role = "candidate", unreadCount = 0 }) {
   const navigate = useNavigate();
   const items = role === "candidate" ? candidateItems : interviewerItems;
   const { logout } = useAuth();
@@ -37,7 +37,7 @@ export default function Sidebar({ role = "candidate" }) {
     <aside className="sidebar">
       <div className="sidebar-top">
         <Logo dark />
-        <span className="role-pill">{role === "candidate" ? "Candidate" : "Company"}</span>
+        <span className="role-pill">{role === "candidate" ? "Candidate" : "Interviewer"}</span>
       </div>
 
       <nav className="nav-list">
@@ -45,6 +45,9 @@ export default function Sidebar({ role = "candidate" }) {
           <NavLink key={path} to={`/${role === "candidate" ? "candidate" : "interviewer"}/${path}`} className="nav-item">
             <Icon size={18} />
             <span>{label}</span>
+            {path === "notifications" && unreadCount > 0 && (
+              <span className="sidebar-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+            )}
           </NavLink>
         ))}
       </nav>

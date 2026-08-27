@@ -69,13 +69,50 @@ class QuestionInput(BaseModel):
     points: int = Field(default=1, ge=0)
     order_index: int = Field(default=0, ge=0)
 
+class RecommendationInput(BaseModel):
+    candidate_id: str
+    interview_id: str | None = None
+    recommendation: str
+    notes: str | None = None
+
 class MonitoringEventInput(BaseModel):
     event_type: str
-    severity: str = "info"
-    event_data: dict[str, Any] = {}
+    severity: Literal["info", "warning", "critical", "success"] = "info"
+    event_data: dict[str, Any] = Field(default_factory=dict)
 
 class AIRequest(BaseModel):
     interview_id: str | None = None
     question: str | None = None
     answer: str | None = None
     candidate_id: str | None = None
+
+class AnalyzeAnswerInput(BaseModel):
+    interview_id: str
+    question_id: str
+    answer_id: str | None = None
+
+class AnswerInput(BaseModel):
+    answer_text: str | None = None
+    answer_transcript: str | None = None
+
+class SendNotificationInput(BaseModel):
+    recipient_id: str | None = None
+    candidate_id: str | None = None
+    interviewer_id: str | None = None
+    type: str = "info"
+    title: str = Field(min_length=1, max_length=150)
+    message: str = Field(min_length=1, max_length=1000)
+    link: str | None = None
+
+class PracticeTestSubmitInput(BaseModel):
+    attempt_id: str
+    answers: list[dict[str, Any]] = []
+
+class RecommendationInput(BaseModel):
+    candidate_id: str
+    decision: Literal["recommended", "review", "reject"]
+    notes: str = ""
+    job_id: str | None = None
+    interview_id: str | None = None
+
+

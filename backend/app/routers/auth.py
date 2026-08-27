@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from app.db.supabase import anon_client, admin_client
+from app.db.supabase import anon_client, admin_client, fetch_maybe_single
 from app.dependencies import get_current_user
 from app.core.errors import api_error
 from app.schemas.common import RegisterInput, LoginInput, ForgotPasswordInput
@@ -30,7 +30,7 @@ def login(body: LoginInput):
         result = anon_client().auth.sign_in_with_password({"email": body.email, "password": body.password})
         if not result.session or not result.user:
             raise api_error(401, "Invalid email or password.", "INVALID_CREDENTIALS")
-        profile = admin_client().table("profiles").select("*").eq("id", result.user.id).maybe_single().execute().data
+        profile = fetch_maybe_single(admin_client().table("profiles").select("*").eq("id", result.user.id))
         if not profile:
             profile = admin_client().table("profiles").upsert({"id": result.user.id, "email": result.user.email, "full_name": result.user.user_metadata.get("full_name", ""), "role": result.user.user_metadata.get("requested_role", "candidate")}, on_conflict="id").execute().data[0]
         return {"success": True, "session": result.session, "profile": profile}

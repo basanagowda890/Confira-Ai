@@ -1,7 +1,7 @@
 from typing import Callable
 from fastapi import Depends, Header, HTTPException
 from app.core.errors import api_error
-from app.db.supabase import anon_client, admin_client
+from app.db.supabase import anon_client, admin_client, fetch_maybe_single
 
 
 def get_current_user(authorization: str | None = Header(default=None)) -> dict:
@@ -12,7 +12,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict:
         user = anon_client().auth.get_user(token.strip()).user
         if not user:
             raise ValueError("No user")
-        profile = admin_client().table("profiles").select("*").eq("id", user.id).maybe_single().execute().data
+        profile = fetch_maybe_single(admin_client().table("profiles").select("*").eq("id", user.id))
         if not profile:
             # Safe recovery for users created before the profile trigger was installed.
             profile = admin_client().table("profiles").upsert({"id": user.id, "email": user.email, "full_name": user.user_metadata.get("full_name", ""), "role": user.user_metadata.get("requested_role", "candidate")}, on_conflict="id").execute().data[0]

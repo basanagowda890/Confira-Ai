@@ -25,3 +25,9 @@ def admin_client() -> Any:
     if not settings.supabase_url or not settings.supabase_service_role_key:
         raise RuntimeError("Supabase service access is not configured.")
     return _create_client()(settings.supabase_url, settings.supabase_service_role_key)
+
+
+def fetch_maybe_single(query: Any) -> Any:
+    res = query.maybe_single().execute()
+    return res.data if res is not None else None
+
