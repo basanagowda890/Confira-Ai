@@ -367,6 +367,8 @@ def record_decision(interview_id: str, body: dict, user: dict = Depends(require_
         raise api_error(400, "Decision must be 'selected' or 'rejected'.", "INVALID_DECISION")
     
     feedback = (body.get("feedback") or "").strip()
+    strengths = (body.get("strengths") or "").strip()
+    weaknesses = (body.get("weaknesses") or "").strip()
     score = body.get("overall_score")
 
     # 1. Update interview status to completed
@@ -393,11 +395,23 @@ def record_decision(interview_id: str, body: dict, user: dict = Depends(require_
         "recommendation": rec_mapping,
         "summary": feedback or f"Candidate was marked {decision_val.upper()} by interviewer.",
     }
+    if strengths:
+        result_data["strengths"] = strengths
+    if weaknesses:
+        result_data["weaknesses"] = weaknesses
+
     if score is not None:
         try:
             result_data["overall_score"] = float(score)
         except (ValueError, TypeError):
             pass
+    for score_field in ("technical_score", "communication_score", "problem_solving_score", "confidence_score", "behavioral_score"):
+        val = body.get(score_field)
+        if val is not None:
+            try:
+                result_data[score_field] = float(val)
+            except (ValueError, TypeError):
+                pass
 
     res = admin_client().table("interview_results").upsert(result_data, on_conflict="interview_id").execute().data[0]
 
@@ -406,18 +420,18 @@ def record_decision(interview_id: str, body: dict, user: dict = Depends(require_
     job_title = job.get("title", "the position") if job else "the position"
 
     if decision_val == "selected":
-        notif_title = "Congratulations! You have been selected"
-        notif_msg = f"Great news! You have been marked SELECTED for '{job_title}'. {feedback}".strip()
+        notif_title = f"Congratulations! You have been selected for {job_title}"
+        notif_msg = f"Great news! The interviewer has concluded your session and marked you SELECTED for '{job_title}'. Feedback: {feedback or strengths or 'Outstanding interview performance.'}".strip()
     else:
-        notif_title = "Interview Update"
-        notif_msg = f"Thank you for participating in the interview for '{job_title}'. Your hiring decision has been updated.".strip()
+        notif_title = f"Interview Outcome Update: {job_title}"
+        notif_msg = f"Thank you for interviewing for '{job_title}'. Your evaluation and interviewer feedback are now available.".strip()
 
     notify(
         item["candidate_id"],
-        f"interview:{interview_id}:decision:{decision_val}",
+        f"interview:{interview_id}:decision:{decision_val}:{int(datetime.now(timezone.utc).timestamp())}",
         notif_title,
         notif_msg,
-        "/candidate/interviews"
+        f"/candidate/results?interview={interview_id}"
     )
 
     return {"success": True, "decision": decision_val, "data": res}

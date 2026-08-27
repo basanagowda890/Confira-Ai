@@ -12,8 +12,11 @@ import {
   Clock,
   Inbox,
   SendHorizontal,
-  CheckCheck
+  CheckCheck,
+  Briefcase,
+  ArrowRight
 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import SectionTitle from "../../components/SectionTitle";
 import Modal from "../../components/Modal";
 import Toast from "../../components/Toast";
@@ -114,8 +117,13 @@ export default function InterviewerNotifications() {
     }
   }
 
+  const navigate = useNavigate();
+
   const getIcon = type => {
     switch (type) {
+      case "job_application":
+      case "job_app":
+        return Briefcase;
       case "interview_scheduled":
       case "calendar":
         return CalendarDays;
@@ -132,6 +140,9 @@ export default function InterviewerNotifications() {
 
   const getTone = type => {
     switch (type) {
+      case "job_application":
+      case "job_app":
+        return "success";
       case "success":
       case "recommendation":
         return "success";
@@ -204,8 +215,11 @@ export default function InterviewerNotifications() {
                 <div
                   className={`notification-item ${n.type || "info"}`}
                   key={n.id}
-                  onClick={() => isUnread && markSingleRead(n.id)}
-                  style={{ cursor: isUnread ? "pointer" : "default" }}
+                  onClick={() => {
+                    if (isUnread) markSingleRead(n.id);
+                    if (n.link) navigate(n.link);
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
                   <span className="notification-icon">
                     <Icon size={18} />
@@ -214,7 +228,7 @@ export default function InterviewerNotifications() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <b>{n.title}</b>
-                        <Badge tone={getTone(n.type)}>{n.type || "Info"}</Badge>
+                        <Badge tone={getTone(n.type)}>{n.type === "job_app" || n.type === "job_application" ? "Application" : (n.type || "Info")}</Badge>
                       </div>
                       {isUnread && (
                         <span
@@ -231,9 +245,34 @@ export default function InterviewerNotifications() {
                       )}
                     </div>
                     <p style={{ margin: "6px 0", color: "var(--ink)", lineHeight: 1.45 }}>{n.message}</p>
+
+                    {/* Direct actionable link if available */}
+                    {n.link && (
+                      <div style={{ marginTop: "10px", marginBottom: "4px" }}>
+                        <Link
+                          to={n.link}
+                          className="btn btn-primary"
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (isUnread) markSingleRead(n.id);
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            fontSize: "12px",
+                            padding: "6px 12px",
+                            fontWeight: "700"
+                          }}
+                        >
+                          <CalendarDays size={13} /> Schedule Interview <ArrowRight size={13} />
+                        </Link>
+                      </div>
+                    )}
+
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "6px", fontSize: "10px", color: "var(--muted)" }}>
                       <span><Clock size={12} style={{ verticalAlign: "middle", marginRight: "3px" }} />{date.toLocaleString()}</span>
-                      {isUnread && <span style={{ color: "var(--maroon)", fontWeight: 700 }}>• Click to mark as read</span>}
+                      {isUnread && <span style={{ color: "var(--maroon)", fontWeight: 700 }}>• Click to open & mark as read</span>}
                     </div>
                   </div>
                 </div>

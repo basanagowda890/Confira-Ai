@@ -394,6 +394,16 @@ export default function CandidateInterviews() {
                   <div className="interview-title-line" style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                     <h3>{i.title}</h3>
                     {formatStatusBadge(i.status)}
+                    {isCompleted && hasResults && (() => {
+                      const res = Array.isArray(i.interview_results) ? i.interview_results[0] : i.interview_results;
+                      if (res?.recommendation === "strong_hire" || res?.recommendation === "hire") {
+                        return <Badge tone="success" style={{ fontWeight: "700" }}><CheckCircle2 size={12} /> Selected</Badge>;
+                      }
+                      if (res?.recommendation === "no_hire") {
+                        return <Badge tone="danger" style={{ fontWeight: "700" }}><X size={12} /> Not Selected</Badge>;
+                      }
+                      return null;
+                    })()}
                     {isScheduled && (
                       <span className="badge badge-info" style={{ fontSize: "10px" }}>
                         <Clock3 size={11} /> {countdownText}
@@ -574,6 +584,43 @@ export default function CandidateInterviews() {
                 </div>
               </div>
 
+              {/* Feedback and Outcome Section if Completed */}
+              {selectedInterview.status === "completed" && (() => {
+                const res = Array.isArray(selectedInterview.interview_results) ? selectedInterview.interview_results[0] : selectedInterview.interview_results;
+                if (!res) return null;
+                const isSel = res.recommendation === "strong_hire" || res.recommendation === "hire";
+                const isRej = res.recommendation === "no_hire";
+                return (
+                  <div style={{ background: isSel ? "#F0FDF4" : isRej ? "#FEF2F2" : "#FAF5F2", border: `1px solid ${isSel ? "#BBF7D0" : isRej ? "#FECACA" : "var(--line)"}`, padding: "16px", borderRadius: "12px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <b style={{ fontSize: "13px", color: isSel ? "#15803D" : isRej ? "#B91C1C" : "var(--ink)" }}>
+                        {isSel ? "Hiring Outcome: SELECTED" : isRej ? "Hiring Outcome: NOT SELECTED" : "Evaluation Completed"}
+                      </b>
+                      {res.overall_score != null && (
+                        <Badge tone={isSel ? "success" : "neutral"}>
+                          Score: {res.overall_score}/100
+                        </Badge>
+                      )}
+                    </div>
+                    {res.summary && (
+                      <p style={{ margin: "0 0 8px", fontSize: "12px", color: "#374151", lineHeight: "1.5" }}>
+                        <b>Feedback:</b> {res.summary}
+                      </p>
+                    )}
+                    {res.strengths && (
+                      <p style={{ margin: "0 0 4px", fontSize: "12px", color: "#166534" }}>
+                        <b>Strengths:</b> {res.strengths}
+                      </p>
+                    )}
+                    {res.weaknesses && (
+                      <p style={{ margin: "0", fontSize: "12px", color: "#991B1B" }}>
+                        <b>Areas to improve:</b> {res.weaknesses}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div style={{ background: "var(--cream)", padding: "14px", borderRadius: "10px" }}>
                 <b style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", color: "var(--ink)" }}>
                   <Info size={15} /> Preparation Instructions:
@@ -584,7 +631,7 @@ export default function CandidateInterviews() {
                 </p>
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px", flexWrap: "wrap" }}>
                 <button
                   className="btn btn-outline"
                   type="button"
@@ -592,28 +639,39 @@ export default function CandidateInterviews() {
                 >
                   Close
                 </button>
-                <button
-                  className="btn btn-outline"
-                  type="button"
-                  onClick={() => {
-                    setSelectedInterview(null);
-                    navigate("/candidate/system-check");
-                  }}
-                >
-                  <MonitorCheck size={15} /> System Check
-                </button>
-                {(selectedInterview.status === "live" || selectedInterview.status === "scheduled") && (
+                {selectedInterview.status === "completed" && (
                   <Link
                     className="btn btn-primary"
-                    to={`/candidate/live?interview=${selectedInterview.id}`}
+                    to={`/candidate/results?interview=${selectedInterview.id}`}
                     onClick={() => setSelectedInterview(null)}
-                    style={{
-                      background: selectedInterview.status === "live" ? "#ef4444" : "var(--maroon)",
-                      borderColor: selectedInterview.status === "live" ? "#ef4444" : "var(--maroon)"
-                    }}
                   >
-                    <Radio size={15} /> Join Interview
+                    <FileText size={15} /> View Full Results & Evaluation
                   </Link>
+                )}
+                {(selectedInterview.status === "live" || selectedInterview.status === "scheduled") && (
+                  <>
+                    <button
+                      className="btn btn-outline"
+                      type="button"
+                      onClick={() => {
+                        setSelectedInterview(null);
+                        navigate("/candidate/system-check");
+                      }}
+                    >
+                      <MonitorCheck size={15} /> System Check
+                    </button>
+                    <Link
+                      className="btn btn-primary"
+                      to={`/candidate/live?interview=${selectedInterview.id}`}
+                      onClick={() => setSelectedInterview(null)}
+                      style={{
+                        background: selectedInterview.status === "live" ? "#ef4444" : "var(--maroon)",
+                        borderColor: selectedInterview.status === "live" ? "#ef4444" : "var(--maroon)"
+                      }}
+                    >
+                      <Radio size={15} /> Join Interview
+                    </Link>
+                  </>
                 )}
               </div>
             </div>

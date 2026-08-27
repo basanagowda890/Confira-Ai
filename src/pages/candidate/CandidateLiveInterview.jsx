@@ -19,7 +19,11 @@ import {
   Sparkles,
   Radio,
   Maximize2,
-  Minimize2
+  Minimize2,
+  ThumbsUp,
+  ThumbsDown,
+  ArrowRight,
+  TrendingUp
 } from "lucide-react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import ChatBox from "../../components/ChatBox";
@@ -62,6 +66,7 @@ export default function CandidateLiveInterview() {
   const [interview, setInterview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [sessionEndedData, setSessionEndedData] = useState(null);
 
   // Media state
   const [mic, setMic] = useState(true);
@@ -244,9 +249,18 @@ export default function CandidateLiveInterview() {
               setSubmitResult(null);
             }
           })
-          .on("broadcast", { event: "interview_ended" }, () => {
-            setToast("The interviewer has concluded this session.");
-            setTimeout(() => navigate(`/candidate/results?interview=${interview.id}`), 2000);
+          .on("broadcast", { event: "interview_ended" }, payload => {
+            if (localStreamRef.current) {
+              localStreamRef.current.getTracks().forEach(t => t.stop());
+            }
+            if (screenStreamRef.current) {
+              screenStreamRef.current.getTracks().forEach(t => t.stop());
+            }
+            if (recognizerRef.current) {
+              recognizerRef.current.stop();
+            }
+            setSessionEndedData(payload || { ended_by: "Interviewer", decision: null });
+            setToast("The interviewer has concluded this session and submitted your evaluation.");
           })
           .subscribe(status => {
             if (status === "SUBSCRIBED") {
@@ -570,6 +584,125 @@ export default function CandidateLiveInterview() {
   return (
     <div className="live-room">
       <Toast message={toast} onClose={() => setToast("")} />
+
+      {/* ── Real-time Interview Concluded & Decision Feedback Modal ──────── */}
+      {sessionEndedData && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.8)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 9999,
+            padding: "20px",
+            backdropFilter: "blur(6px)"
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              width: "100%",
+              maxWidth: "560px",
+              background: "#fff",
+              borderRadius: "20px",
+              padding: "28px",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.3)",
+              textAlign: "center"
+            }}
+          >
+            {sessionEndedData.decision === "selected" ? (
+              <>
+                <div style={{ width: "64px", height: "64px", background: "#DCFCE7", color: "#16a34a", borderRadius: "50%", display: "grid", placeItems: "center", margin: "0 auto 16px" }}>
+                  <ThumbsUp size={32} />
+                </div>
+                <Badge tone="success" style={{ fontSize: "12px", padding: "4px 12px", marginBottom: "8px" }}>
+                  <CheckCircle2 size={13} /> SELECTED FOR POSITION
+                </Badge>
+                <h2 style={{ margin: "10px 0 6px", fontSize: "22px", color: "var(--ink)" }}>
+                  Congratulations, {candidateName}!
+                </h2>
+                <p style={{ color: "var(--muted)", fontSize: "13px", margin: "0 0 16px" }}>
+                  The interviewer has concluded your session and recorded a <b>SELECTED</b> outcome for <b>{interview?.jobs?.title || interview?.title}</b>.
+                </p>
+              </>
+            ) : sessionEndedData.decision === "rejected" ? (
+              <>
+                <div style={{ width: "64px", height: "64px", background: "#FEE2E2", color: "#ef4444", borderRadius: "50%", display: "grid", placeItems: "center", margin: "0 auto 16px" }}>
+                  <ThumbsDown size={32} />
+                </div>
+                <Badge tone="danger" style={{ fontSize: "12px", padding: "4px 12px", marginBottom: "8px" }}>
+                  EVALUATION COMPLETED
+                </Badge>
+                <h2 style={{ margin: "10px 0 6px", fontSize: "22px", color: "var(--ink)" }}>
+                  Interview Session Concluded
+                </h2>
+                <p style={{ color: "var(--muted)", fontSize: "13px", margin: "0 0 16px" }}>
+                  Thank you for interviewing for <b>{interview?.jobs?.title || interview?.title}</b>. Your interviewer has submitted your assessment feedback.
+                </p>
+              </>
+            ) : (
+              <>
+                <div style={{ width: "64px", height: "64px", background: "var(--cream)", color: "var(--maroon)", borderRadius: "50%", display: "grid", placeItems: "center", margin: "0 auto 16px" }}>
+                  <Sparkles size={32} />
+                </div>
+                <Badge tone="info" style={{ fontSize: "12px", padding: "4px 12px", marginBottom: "8px" }}>
+                  SESSION CONCLUDED
+                </Badge>
+                <h2 style={{ margin: "10px 0 6px", fontSize: "22px", color: "var(--ink)" }}>
+                  Interview Session Concluded
+                </h2>
+                <p style={{ color: "var(--muted)", fontSize: "13px", margin: "0 0 16px" }}>
+                  Your live interview session for <b>{interview?.jobs?.title || interview?.title}</b> has been completed.
+                </p>
+              </>
+            )}
+
+            {/* Feedback Summary Box if present */}
+            {(sessionEndedData.feedback || sessionEndedData.strengths || sessionEndedData.weaknesses) && (
+              <div style={{ background: "#FAF5F2", border: "1px solid var(--line)", borderRadius: "12px", padding: "16px", textAlign: "left", marginBottom: "20px" }}>
+                <b style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--maroon)", display: "block", marginBottom: "6px" }}>
+                  Interviewer Feedback
+                </b>
+                {sessionEndedData.feedback && (
+                  <p style={{ margin: "0 0 10px", fontSize: "13px", color: "#333", lineHeight: "1.5" }}>
+                    "{sessionEndedData.feedback}"
+                  </p>
+                )}
+                {sessionEndedData.strengths && (
+                  <div style={{ fontSize: "12px", color: "#166534", marginBottom: "4px" }}>
+                    <b>Key Strengths:</b> {sessionEndedData.strengths}
+                  </div>
+                )}
+                {sessionEndedData.weaknesses && (
+                  <div style={{ fontSize: "12px", color: "#991b1b" }}>
+                    <b>Areas to Improve:</b> {sessionEndedData.weaknesses}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => navigate("/candidate/interviews")}
+              >
+                Back to Interviews
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => navigate(`/candidate/results?interview=${interview?.id}`)}
+                style={{ background: sessionEndedData.decision === "selected" ? "#16a34a" : "var(--maroon)", borderColor: sessionEndedData.decision === "selected" ? "#16a34a" : "var(--maroon)", fontWeight: "700" }}
+              >
+                View Full Results & Feedback <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <header className="live-room-header">

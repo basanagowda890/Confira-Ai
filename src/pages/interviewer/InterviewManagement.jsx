@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { CalendarDays, Plus, Clock3, Video, Users, MoreHorizontal, ChevronLeft, ChevronRight, Ban, PlayCircle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { CalendarDays, Plus, Clock3, Video, Users, MoreHorizontal, ChevronLeft, ChevronRight, Ban, PlayCircle, ThumbsUp, ThumbsDown, CheckCircle2, PhoneOff, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import SectionTitle from "../../components/SectionTitle";
 import Badge from "../../components/Badge";
 import Modal from "../../components/Modal";
@@ -25,6 +25,7 @@ function getPhoto(c, idx = 0) {
 }
 
 export default function InterviewManagement() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [open, setOpen] = useState(false);
   const [menu, setMenu] = useState(null);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
@@ -34,6 +35,9 @@ export default function InterviewManagement() {
   const [candidates, setCandidates] = useState([]);
   const [toast, setToast] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Decision Modal state
+  const [decisionModal, setDecisionModal] = useState({ open: false, row: null, type: "selected", feedback: "", strengths: "", weaknesses: "", score: 85, loading: false });
 
   const [form, setForm] = useState({
     candidate_id: "",
@@ -64,6 +68,35 @@ export default function InterviewManagement() {
     const unsub = subscribeToTable("interviews", null, loadData);
     return () => unsub();
   }, [loadData]);
+
+  // Handle auto-schedule trigger from notification link
+  useEffect(() => {
+    if (searchParams.get("schedule") === "true" && candidates.length > 0 && jobs.length > 0) {
+      const candidateIdParam = searchParams.get("candidate");
+      const jobIdParam = searchParams.get("job");
+
+      const targetCandidate = candidates.find(c => c.id === candidateIdParam) || candidates[0];
+      const targetJob = jobs.find(j => j.id === jobIdParam) || jobs[0];
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(10, 0, 0, 0);
+      const pad = n => String(n).padStart(2, "0");
+      const defaultDatetime = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`;
+
+      setForm({
+        candidate_id: targetCandidate?.id || "",
+        job_id: targetJob?.id || "",
+        title: targetJob ? `${targetJob.title} — ${targetCandidate?.full_name || "Interview"}` : "Technical Interview",
+        type: "technical",
+        scheduled_at: defaultDatetime,
+        duration_minutes: 60,
+        instructions: "Please be ready with a quiet environment and working camera.",
+      });
+      setOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, candidates, jobs, setSearchParams]);
 
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
@@ -147,6 +180,27 @@ export default function InterviewManagement() {
       setToast(error.message || "Failed to cancel interview.");
     }
     setTimeout(() => setToast(""), 2500);
+  }
+
+  async function submitDecisionRecord() {
+    if (!decisionModal.row) return;
+    setDecisionModal(prev => ({ ...prev, loading: true }));
+    try {
+      await api.post(`/interviews/${decisionModal.row.id}/decision`, {
+        decision: decisionModal.type,
+        feedback: decisionModal.feedback.trim(),
+        strengths: decisionModal.strengths.trim(),
+        weaknesses: decisionModal.weaknesses.trim(),
+        overall_score: decisionModal.score
+      });
+      setToast(`Interview concluded. Candidate marked as ${decisionModal.type.toUpperCase()} with feedback.`);
+      setDecisionModal({ open: false, row: null, type: "selected", feedback: "", strengths: "", weaknesses: "", score: 85, loading: false });
+      await loadData();
+    } catch (error) {
+      setToast(error.message || "Failed to record hiring decision.");
+    } finally {
+      setDecisionModal(prev => ({ ...prev, loading: false }));
+    }
   }
 
   return (
@@ -303,6 +357,38 @@ export default function InterviewManagement() {
                             overflow: "hidden",
                           }}
                         >
+                          {row.status !== "cancelled" && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDecisionModal({
+                                  open: true,
+                                  row,
+                                  type: "selected",
+                                  feedback: "",
+                                  strengths: "",
+                                  weaknesses: "",
+                                  score: 85,
+                                  loading: false
+                                });
+                                setMenu(null);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "10px 14px",
+                                background: "none",
+                                border: "none",
+                                color: "#10b981",
+                                cursor: "pointer",
+                                fontSize: "13px",
+                                textAlign: "left",
+                              }}
+                            >
+                              <CheckCircle2 size={14} /> End & Record Decision
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => cancelInterview(row.id)}
@@ -444,6 +530,223 @@ export default function InterviewManagement() {
           </button>
         </form>
       </Modal>
+
+      {/* Decision & End Session Modal */}
+      {decisionModal.open && decisionModal.row && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.72)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 9999,
+            padding: "20px",
+            backdropFilter: "blur(4px)"
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              width: "100%",
+              maxWidth: "580px",
+              background: "#fff",
+              borderRadius: "18px",
+              padding: "24px",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.25)",
+              maxHeight: "90vh",
+              overflowY: "auto"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--line)", paddingBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ background: "var(--cream)", color: "var(--maroon)", padding: "10px", borderRadius: "12px" }}>
+                  <PhoneOff size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "18px" }}>
+                    Record Hiring Decision & Feedback
+                  </h3>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--muted)" }}>
+                    Candidate: <b>{decisionModal.row.candidate?.full_name || decisionModal.row.title}</b> · {decisionModal.row.jobs?.title || decisionModal.row.title}
+                  </p>
+                </div>
+              </div>
+              <button className="icon-btn" onClick={() => setDecisionModal({ open: false, row: null, type: "selected", feedback: "", strengths: "", weaknesses: "", score: 85, loading: false })}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Decision Selector Cards */}
+            <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "8px", color: "var(--ink)" }}>
+              Hiring Decision Outcome:
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <button
+                type="button"
+                onClick={() => setDecisionModal(prev => ({ ...prev, type: "selected" }))}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  border: `2px solid ${decisionModal.type === "selected" ? "#16a34a" : "var(--line)"}`,
+                  background: decisionModal.type === "selected" ? "#F0FDF4" : "#FAF5F2",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  textAlign: "left",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <div style={{ background: decisionModal.type === "selected" ? "#16a34a" : "#d1d5db", color: "#fff", padding: "8px", borderRadius: "8px" }}>
+                  <ThumbsUp size={18} />
+                </div>
+                <div>
+                  <b style={{ color: decisionModal.type === "selected" ? "#15803d" : "var(--ink)", display: "block", fontSize: "14px" }}>
+                    Selected (Hired)
+                  </b>
+                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>Candidate passed the assessment</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDecisionModal(prev => ({ ...prev, type: "rejected" }))}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  border: `2px solid ${decisionModal.type === "rejected" ? "#ef4444" : "var(--line)"}`,
+                  background: decisionModal.type === "rejected" ? "#FEF2F2" : "#FAF5F2",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  textAlign: "left",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <div style={{ background: decisionModal.type === "rejected" ? "#ef4444" : "#d1d5db", color: "#fff", padding: "8px", borderRadius: "8px" }}>
+                  <ThumbsDown size={18} />
+                </div>
+                <div>
+                  <b style={{ color: decisionModal.type === "rejected" ? "#b91c1c" : "var(--ink)", display: "block", fontSize: "14px" }}>
+                    Rejected (Not Moving Forward)
+                  </b>
+                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>Provide constructive guidance</span>
+                </div>
+              </button>
+            </div>
+
+            {/* Overall Score Slider */}
+            <div style={{ background: "#FAF5F2", padding: "12px 16px", borderRadius: "12px", marginBottom: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <span style={{ fontSize: "12px", fontWeight: "700" }}>Overall Assessment Score:</span>
+                <b style={{ fontSize: "14px", color: decisionModal.score >= 70 ? "#16a34a" : "#ea580c" }}>{decisionModal.score} / 100</b>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={decisionModal.score}
+                onChange={e => setDecisionModal(prev => ({ ...prev, score: Number(e.target.value) }))}
+                style={{ width: "100%", accentColor: decisionModal.type === "selected" ? "#16a34a" : "#ef4444", cursor: "pointer" }}
+              />
+            </div>
+
+            {/* Overall Feedback Textarea */}
+            <label style={{ display: "block", marginBottom: "12px", fontSize: "12px", fontWeight: "700" }}>
+              Overall Feedback & Evaluation Summary:
+              <textarea
+                rows={3}
+                value={decisionModal.feedback}
+                onChange={e => setDecisionModal(prev => ({ ...prev, feedback: e.target.value }))}
+                placeholder={
+                  decisionModal.type === "selected"
+                    ? "e.g. Demonstrated exceptional problem-solving depth, clear React architectural knowledge, and collaborative communication."
+                    : "e.g. Good fundamentals; recommend deepening hands-on knowledge in asynchronous execution and system design tradeoffs."
+                }
+                style={{
+                  width: "100%",
+                  marginTop: "4px",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--line)",
+                  fontFamily: "inherit",
+                  fontSize: "13px",
+                  resize: "vertical"
+                }}
+              />
+            </label>
+
+            {/* Strengths & Areas to Improve Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <label style={{ fontSize: "12px", fontWeight: "700" }}>
+                Key Strengths:
+                <input
+                  type="text"
+                  value={decisionModal.strengths}
+                  onChange={e => setDecisionModal(prev => ({ ...prev, strengths: e.target.value }))}
+                  placeholder="e.g. Problem decomposition, clear explanations"
+                  style={{
+                    width: "100%",
+                    marginTop: "4px",
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--line)",
+                    fontSize: "12px"
+                  }}
+                />
+              </label>
+              <label style={{ fontSize: "12px", fontWeight: "700" }}>
+                Areas for Improvement:
+                <input
+                  type="text"
+                  value={decisionModal.weaknesses}
+                  onChange={e => setDecisionModal(prev => ({ ...prev, weaknesses: e.target.value }))}
+                  placeholder="e.g. Edge case handling, structured walkthroughs"
+                  style={{
+                    width: "100%",
+                    marginTop: "4px",
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--line)",
+                    fontSize: "12px"
+                  }}
+                />
+              </label>
+            </div>
+
+            <div style={{ background: "#F3F4F6", padding: "10px 14px", borderRadius: "10px", marginBottom: "18px", fontSize: "11px", color: "var(--muted)" }}>
+              ℹ️ <b>Candidate Notification:</b> Submitting this evaluation will complete the interview, update the application, and notify the candidate in real time.
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => setDecisionModal({ open: false, row: null, type: "selected", feedback: "", strengths: "", weaknesses: "", score: 85, loading: false })}
+                disabled={decisionModal.loading}
+              >
+                Cancel
+              </button>
+              <button
+                className={`btn ${decisionModal.type === "selected" ? "btn-primary" : "btn-danger"}`}
+                onClick={submitDecisionRecord}
+                disabled={decisionModal.loading}
+                style={{
+                  background: decisionModal.type === "selected" ? "#16a34a" : "#ef4444",
+                  borderColor: decisionModal.type === "selected" ? "#16a34a" : "#ef4444",
+                  fontWeight: "700"
+                }}
+              >
+                {decisionModal.loading ? "Saving..." : `Conclude & Mark ${decisionModal.type === "selected" ? "Selected" : "Rejected"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -18,7 +18,10 @@ import {
   Clock3,
   Radio,
   FileText,
-  MessageSquare
+  MessageSquare,
+  ThumbsUp,
+  ThumbsDown,
+  X
 } from "lucide-react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import ChatBox from "../../components/ChatBox";
@@ -51,6 +54,14 @@ export default function LiveInterviewRoom() {
   const [interview, setInterview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+
+  // Candidate Decision Modal state
+  const [decisionModal, setDecisionModal] = useState({ open: false, type: "selected" });
+  const [decisionFeedback, setDecisionFeedback] = useState("");
+  const [decisionStrengths, setDecisionStrengths] = useState("");
+  const [decisionWeaknesses, setDecisionWeaknesses] = useState("");
+  const [decisionScore, setDecisionScore] = useState(85);
+  const [decisionLoading, setDecisionLoading] = useState(false);
 
   // Media state
   const [mic, setMic] = useState(true);
@@ -350,22 +361,42 @@ export default function LiveInterviewRoom() {
     addEvent("info", `Switched to Question ${idx + 1}`);
   }
 
-  // End interview session
-  async function endInterview() {
-    if (!interview?.id) return;
+  // End interview session with decision and feedback
+  async function submitDecision() {
+    if (!interview?.id || !decisionModal.type) return;
+    setDecisionLoading(true);
     try {
-      await api.post(`/interviews/${interview.id}/complete`);
+      await api.post(`/interviews/${interview.id}/decision`, {
+        decision: decisionModal.type,
+        feedback: decisionFeedback.trim(),
+        strengths: decisionStrengths.trim(),
+        weaknesses: decisionWeaknesses.trim(),
+        overall_score: decisionScore
+      });
+
       if (channelRef.current) {
         channelRef.current.send({
           type: "broadcast",
           event: "interview_ended",
-          payload: { interview_id: interview.id }
+          payload: {
+            ended_by: interviewerName,
+            decision: decisionModal.type,
+            feedback: decisionFeedback.trim(),
+            strengths: decisionStrengths.trim(),
+            weaknesses: decisionWeaknesses.trim(),
+            overall_score: decisionScore,
+            interview_id: interview.id
+          }
         });
       }
-      setToast("Interview concluded. Redirecting to reports...");
+
+      setDecisionModal({ open: false, type: "selected" });
+      setToast("Interview concluded with decision. Redirecting to reports...");
       setTimeout(() => navigate(`/interviewer/reports?interview=${interview.id}`), 1500);
     } catch (err) {
       setToast(err.message || "Failed to end interview.");
+    } finally {
+      setDecisionLoading(false);
     }
   }
 
@@ -395,6 +426,223 @@ export default function LiveInterviewRoom() {
     <div className="live-room interviewer-room">
       <Toast message={toast} onClose={() => setToast("")} />
 
+      {/* ── End Interview & Decision Modal ─────────────────────────────── */}
+      {decisionModal.open && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.72)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 9999,
+            padding: "20px",
+            backdropFilter: "blur(4px)"
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              width: "100%",
+              maxWidth: "580px",
+              background: "#fff",
+              borderRadius: "18px",
+              padding: "24px",
+              boxShadow: "0 24px 48px rgba(0,0,0,0.25)",
+              maxHeight: "90vh",
+              overflowY: "auto"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid var(--line)", paddingBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ background: "var(--cream)", color: "var(--maroon)", padding: "10px", borderRadius: "12px" }}>
+                  <PhoneOff size={22} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "18px" }}>
+                    End Interview Session & Record Decision
+                  </h3>
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--muted)" }}>
+                    Candidate: <b>{candidateName}</b> · {interview?.jobs?.title || interview?.title}
+                  </p>
+                </div>
+              </div>
+              <button className="icon-btn" onClick={() => setDecisionModal({ open: false, type: "selected" })}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Decision Selector Cards */}
+            <label style={{ display: "block", fontSize: "12px", fontWeight: "700", marginBottom: "8px", color: "var(--ink)" }}>
+              Hiring Decision Outcome:
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <button
+                type="button"
+                onClick={() => setDecisionModal(prev => ({ ...prev, type: "selected" }))}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  border: `2px solid ${decisionModal.type === "selected" ? "#16a34a" : "var(--line)"}`,
+                  background: decisionModal.type === "selected" ? "#F0FDF4" : "#FAF5F2",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  textAlign: "left",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <div style={{ background: decisionModal.type === "selected" ? "#16a34a" : "#d1d5db", color: "#fff", padding: "8px", borderRadius: "8px" }}>
+                  <ThumbsUp size={18} />
+                </div>
+                <div>
+                  <b style={{ color: decisionModal.type === "selected" ? "#15803d" : "var(--ink)", display: "block", fontSize: "14px" }}>
+                    Selected (Hired)
+                  </b>
+                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>Candidate passed the assessment</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDecisionModal(prev => ({ ...prev, type: "rejected" }))}
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "12px",
+                  border: `2px solid ${decisionModal.type === "rejected" ? "#ef4444" : "var(--line)"}`,
+                  background: decisionModal.type === "rejected" ? "#FEF2F2" : "#FAF5F2",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  textAlign: "left",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                <div style={{ background: decisionModal.type === "rejected" ? "#ef4444" : "#d1d5db", color: "#fff", padding: "8px", borderRadius: "8px" }}>
+                  <ThumbsDown size={18} />
+                </div>
+                <div>
+                  <b style={{ color: decisionModal.type === "rejected" ? "#b91c1c" : "var(--ink)", display: "block", fontSize: "14px" }}>
+                    Rejected (Not Moving Forward)
+                  </b>
+                  <span style={{ fontSize: "11px", color: "var(--muted)" }}>Provide constructive guidance</span>
+                </div>
+              </button>
+            </div>
+
+            {/* Overall Score Slider */}
+            <div style={{ background: "#FAF5F2", padding: "12px 16px", borderRadius: "12px", marginBottom: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <span style={{ fontSize: "12px", fontWeight: "700" }}>Overall Assessment Score:</span>
+                <b style={{ fontSize: "14px", color: decisionScore >= 70 ? "#16a34a" : "#ea580c" }}>{decisionScore} / 100</b>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={decisionScore}
+                onChange={e => setDecisionScore(Number(e.target.value))}
+                style={{ width: "100%", accentColor: decisionModal.type === "selected" ? "#16a34a" : "#ef4444", cursor: "pointer" }}
+              />
+            </div>
+
+            {/* Overall Feedback Textarea */}
+            <label style={{ display: "block", marginBottom: "12px", fontSize: "12px", fontWeight: "700" }}>
+              Overall Feedback & Evaluation Summary:
+              <textarea
+                rows={3}
+                value={decisionFeedback}
+                onChange={e => setDecisionFeedback(e.target.value)}
+                placeholder={
+                  decisionModal.type === "selected"
+                    ? "e.g. Demonstrated exceptional problem-solving depth, clear React architectural knowledge, and collaborative communication."
+                    : "e.g. Good fundamentals; recommend deepening hands-on knowledge in asynchronous execution and system design tradeoffs."
+                }
+                style={{
+                  width: "100%",
+                  marginTop: "4px",
+                  padding: "10px 12px",
+                  borderRadius: "8px",
+                  border: "1px solid var(--line)",
+                  fontFamily: "inherit",
+                  fontSize: "13px",
+                  resize: "vertical"
+                }}
+              />
+            </label>
+
+            {/* Strengths & Areas to Improve Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+              <label style={{ fontSize: "12px", fontWeight: "700" }}>
+                Key Strengths:
+                <input
+                  type="text"
+                  value={decisionStrengths}
+                  onChange={e => setDecisionStrengths(e.target.value)}
+                  placeholder="e.g. Quick problem decomposition, clear explanations"
+                  style={{
+                    width: "100%",
+                    marginTop: "4px",
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--line)",
+                    fontSize: "12px"
+                  }}
+                />
+              </label>
+              <label style={{ fontSize: "12px", fontWeight: "700" }}>
+                Areas for Improvement:
+                <input
+                  type="text"
+                  value={decisionWeaknesses}
+                  onChange={e => setDecisionWeaknesses(e.target.value)}
+                  placeholder="e.g. Edge case handling, structured walkthroughs"
+                  style={{
+                    width: "100%",
+                    marginTop: "4px",
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--line)",
+                    fontSize: "12px"
+                  }}
+                />
+              </label>
+            </div>
+
+            <div style={{ background: "#F3F4F6", padding: "10px 14px", borderRadius: "10px", marginBottom: "18px", fontSize: "11px", color: "var(--muted)" }}>
+              ℹ️ <b>Candidate Notification:</b> Ending this session will update the candidate's application, immediately deliver this feedback, and notify <b>{candidateName}</b> in real time.
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => setDecisionModal({ open: false, type: "selected" })}
+                disabled={decisionLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className={`btn ${decisionModal.type === "selected" ? "btn-primary" : "btn-danger"}`}
+                onClick={submitDecision}
+                disabled={decisionLoading}
+                style={{
+                  background: decisionModal.type === "selected" ? "#16a34a" : "#ef4444",
+                  borderColor: decisionModal.type === "selected" ? "#16a34a" : "#ef4444",
+                  fontWeight: "700"
+                }}
+              >
+                {decisionLoading ? "Ending Session..." : `End Session & Mark ${decisionModal.type === "selected" ? "Selected" : "Rejected"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="live-room-header">
         <div>
@@ -412,9 +660,6 @@ export default function LiveInterviewRoom() {
             <Radio size={15} style={{ color: connected ? "#22c55e" : "#eab308" }} />
             {connected ? "Candidate Connected" : "Waiting for Candidate"}
           </div>
-          <button className="btn btn-danger btn-sm" onClick={endInterview}>
-            <PhoneOff size={15} /> End Interview
-          </button>
         </div>
       </header>
 
@@ -423,7 +668,7 @@ export default function LiveInterviewRoom() {
         {/* Left Video Area */}
         <section className="video-stage">
           {/* Dual Stream Grid */}
-          <div style={{ display: "grid", gridTemplateColumns: isCandidateScreenActive ? "1fr 1.2fr" : "1fr", gap: "10px", height: "540px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isCandidateScreenActive ? "1fr 1.2fr" : "1fr", gap: "10px", height: "540px", position: "relative" }}>
             {/* Candidate Camera Stream */}
             <div className="remote-video-panel" style={{ height: "100%" }}>
               <video ref={candidateCameraRef} autoPlay playsInline className="live-video" />
@@ -455,16 +700,32 @@ export default function LiveInterviewRoom() {
                 </button>
               </div>
             )}
+
+            {/* Interviewer Picture-in-Picture Local Preview */}
+            <div
+              style={{
+                position: "absolute",
+                top: "16px",
+                right: "16px",
+                width: "130px",
+                height: "90px",
+                borderRadius: "10px",
+                overflow: "hidden",
+                border: "2px solid #fff",
+                background: "#000",
+                zIndex: 10,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.4)"
+              }}
+            >
+              <video ref={localVideoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <span style={{ position: "absolute", bottom: "3px", left: "5px", fontSize: "9px", color: "#fff", background: "rgba(0,0,0,0.6)", padding: "1px 4px", borderRadius: "3px" }}>
+                You ({interviewerName.split(" ")[0]})
+              </span>
+            </div>
           </div>
 
-          {/* Local Interviewer Video Thumbnail */}
-          <div className="local-video-panel">
-            <video ref={localVideoRef} autoPlay muted playsInline className="live-video" />
-            <span className="video-tag">YOU (INTERVIEWER)</span>
-          </div>
-
-          {/* Controls Bar */}
-          <div className="live-controls">
+          {/* Controls Strip */}
+          <div className="video-controls">
             <button
               onClick={toggleMic}
               className={`round-control ${mic ? "" : "off"}`}
@@ -481,9 +742,14 @@ export default function LiveInterviewRoom() {
             >
               {camera ? <Video size={18} /> : <VideoOff size={18} />}
             </button>
-            <Link to="/interviewer/interviews" className="end-call">
-              <PhoneOff size={18} /> Exit Console
-            </Link>
+            <button
+              type="button"
+              onClick={() => setDecisionModal({ open: true, type: "selected" })}
+              className="end-call"
+              style={{ cursor: "pointer" }}
+            >
+              <PhoneOff size={18} /> End Session & Evaluate
+            </button>
           </div>
         </section>
 

@@ -79,25 +79,35 @@ def apply(job_id: str, user: dict = Depends(get_current_user)):
     except Exception as e:
         raise api_error(409, f"Application could not be created: {str(e)}", "APPLICATION_FAILED")
 
+    candidate_name = user.get("profile", {}).get("full_name") or user.get("email") or "A candidate"
+    job_title = job.get("title", "Position")
+    import time
+    ts = int(time.time())
+
     # Notify candidate
     notify(
         user["id"],
-        f"application:{job_id}:{user['id']}",
+        f"application:{job_id}:{user['id']}:{ts}",
         "Application submitted",
-        f"Your application for '{job.get('title', 'Position')}' was submitted successfully.",
+        f"Your application for '{job_title}' was submitted successfully. The hiring team has been notified to schedule your interview.",
         "/candidate/jobs",
     )
 
-    # Notify interviewer who created the position
+    # Notify interviewer who created the position or all registered interviewers
+    interviewers_to_notify = []
     if job.get("created_by"):
-        candidate_name = user.get("profile", {}).get("full_name") or user.get("email") or "A candidate"
-        job_title = job.get("title", "Position")
+        interviewers_to_notify.append(job["created_by"])
+    else:
+        all_interviewers = admin_client().table("profiles").select("id").eq("role", "interviewer").execute().data or []
+        interviewers_to_notify = [i["id"] for i in all_interviewers]
+
+    for interviewer_id in interviewers_to_notify:
         notify(
-            job["created_by"],
-            f"job:{job_id}:applicant:{user['id']}",
-            "New candidate application",
-            f"{candidate_name} applied for {job_title}.",
-            "/interviewer/candidates",
+            interviewer_id,
+            f"job_app:{job_id}:{user['id']}:{ts}",
+            "New Candidate Application",
+            f"{candidate_name} has applied for '{job_title}'. Click to schedule an interview.",
+            f"/interviewer/interviews?schedule=true&candidate={user['id']}&job={job_id}",
         )
 
     return {"success": True, "data": data}
