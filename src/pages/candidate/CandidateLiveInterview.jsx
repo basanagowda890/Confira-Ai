@@ -299,6 +299,65 @@ export default function CandidateLiveInterview() {
     };
   }, [interview, roomId, candidateName, navigate]);
 
+  // ── Background ML Telemetry Capture (Eye, Voice, YOLO) ───────────────────
+  const offscreenCanvasRef = useRef(null);
+  const audioRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  useEffect(() => {
+    if (!interview?.id || !localVideoRef.current) return;
+    let isMounted = true;
+    const ML_INTERVAL_MS = 3500; // Sample every 3.5 seconds to avoid CPU overload
+
+    // Setup canvas
+    if (!offscreenCanvasRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 240;
+      offscreenCanvasRef.current = canvas;
+    }
+
+    const intervalId = setInterval(async () => {
+      if (!isMounted || !localStreamRef.current) return;
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (!videoTrack || !videoTrack.enabled) return;
+
+      try {
+        const video = localVideoRef.current;
+        if (!video || video.readyState < 2) return;
+
+        const canvas = offscreenCanvasRef.current;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageB64 = canvas.toDataURL("image/jpeg", 0.75);
+
+        // Run real ML analysis on backend
+        const res = await api.post(`/interviews/${interview.id}/ml/analyze`, {
+          image_b64: imageB64,
+          candidate_id: profile?.id,
+          timestamp: new Date().toISOString()
+        });
+
+        if (res?.data?.data && channelRef.current) {
+          // Broadcast real ML result to interviewer live room
+          channelRef.current.send({
+            type: "broadcast",
+            event: "ml_telemetry",
+            payload: res.data.data
+          });
+        }
+      } catch (err) {
+        // Non-blocking: live interview continues even if telemetry network blips
+        console.debug("ML telemetry background check:", err?.message);
+      }
+    }, ML_INTERVAL_MS);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [interview?.id, profile?.id]);
+
   // Interview timer ticker
   useEffect(() => {
     if (!interview) return;

@@ -2,10 +2,19 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import get_settings
-from app.routers import health, auth, profiles, jobs, interviews, uploads, notifications, dashboard, ai, features, group_discussions
+from app.routers import health, auth, profiles, jobs, interviews, uploads, notifications, dashboard, ai, features, group_discussions, ml
+from app.services.ml_service import get_ml_service
 
 settings = get_settings()
 app = FastAPI(title="Confira API", version="1.0.0", docs_url="/docs", redoc_url="/redoc")
+
+@app.on_event("startup")
+def startup_event():
+    # Pre-warm ML models in background/startup so inference is instantaneous
+    try:
+        get_ml_service().initialize()
+    except Exception as e:
+        print(f"Warning: ML models failed to pre-warm: {e}")
 
 origins = list(set([
     settings.frontend_url,
@@ -30,7 +39,8 @@ app.add_middleware(
 async def unhandled_error(_: Request, __: Exception):
     return JSONResponse(status_code=500, content={"success": False, "message": "An unexpected server error occurred.", "code": "INTERNAL_ERROR"})
 
-for router in (health.router, auth.router, profiles.router, jobs.router, interviews.router, uploads.router, notifications.router, dashboard.router, ai.router, features.router, group_discussions.router):
+for router in (health.router, auth.router, profiles.router, jobs.router, interviews.router, uploads.router, notifications.router, dashboard.router, ai.router, features.router, group_discussions.router, ml.router):
     app.include_router(router, prefix="/api")
+
 
 

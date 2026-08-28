@@ -109,6 +109,31 @@ export default function LiveMonitoring() {
   const [isCandidateScreenActive, setIsCandidateScreenActive] = useState(false);
   const [ended, setEnded] = useState(false);
 
+  // Real ML Telemetry & Engine State
+  const [mlTelemetry, setMlTelemetry] = useState(null);
+  const [mlEngineStatus, setMlEngineStatus] = useState({ eye: false, voice: false, yolo: false, status: "checking" });
+  const [mlRequestCount, setMlRequestCount] = useState(0);
+  const [lastInferenceTime, setLastInferenceTime] = useState(null);
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+
+  // Fetch ML Engine Health on mount
+  useEffect(() => {
+    async function checkMlHealth() {
+      try {
+        const res = await api.get("/ml/health");
+        if (res?.data?.data) {
+          setMlEngineStatus(res.data.data);
+        }
+      } catch (e) {
+        console.debug("ML health check:", e?.message);
+        setMlEngineStatus({ eye: false, voice: false, yolo: false, status: "unavailable" });
+      }
+    }
+    checkMlHealth();
+    const interval = setInterval(checkMlHealth, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Video refs
   const localVideoRef = useRef(null);
   const candidateCameraRef = useRef(null);
@@ -385,6 +410,26 @@ export default function LiveMonitoring() {
           })
           .on("broadcast", { event: "monitoring_alert" }, payload => {
             addEvent(payload.level || "warning", payload.text || "Integrity alert detected");
+          })
+          .on("broadcast", { event: "ml_telemetry" }, payload => {
+            if (payload) {
+              setMlTelemetry(payload);
+              setMlRequestCount(c => c + 1);
+              setLastInferenceTime(new Date().toLocaleTimeString());
+              if (payload.alerts && payload.alerts.length > 0) {
+                payload.alerts.forEach(alert => {
+                  if (alert === "multiple_people_detected") {
+                    addEvent("warning", "⚠ Multiple people detected in candidate camera");
+                  } else if (alert === "face_not_detected") {
+                    addEvent("warning", "⚠ No person detected in candidate camera");
+                  } else if (alert === "gaze_unfocused") {
+                    addEvent("info", "Eye attention: Candidate looking away from screen");
+                  } else if (alert.startsWith("detected_")) {
+                    addEvent("warning", `⚠ Secondary device detected: ${alert.replace("detected_", "").replace(/_/g, " ")}`);
+                  }
+                });
+              }
+            }
           })
           .subscribe();
 
@@ -1165,7 +1210,182 @@ export default function LiveMonitoring() {
 
           {/* Side Column: Chart & Interview Progress + Sessions + Integrity */}
           <aside className="activity-rail">
-            
+
+            {/* ── Real AI / ML Live Monitoring Card ── */}
+            <div className="card" style={{ marginBottom: "16px", padding: "16px", borderRadius: "14px", border: "1px solid rgba(136, 19, 55, 0.15)", background: "#ffffff" }}>
+              <div className="card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <BrainCircuit size={16} color="var(--maroon)" />
+                  <h3 style={{ margin: 0, fontSize: "13px", fontWeight: "700" }}>AI / ML Live Monitoring</h3>
+                </div>
+                <Badge tone={mlTelemetry ? "success" : "info"}>
+                  <span className="live-dot" /> {mlTelemetry ? "STREAMING" : "CONNECTING"}
+                </Badge>
+              </div>
+
+              {/* Model Health Indicators */}
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "#FAF5F2", borderRadius: "8px", fontSize: "10px", marginBottom: "12px", border: "1px solid var(--line)" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.eye ? "#16a34a" : "#ca8a04" }} />
+                  <b>Eye:</b> {mlEngineStatus?.models?.eye ? "Connected" : "Loading"}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.voice ? "#16a34a" : "#ca8a04" }} />
+                  <b>Voice:</b> {mlEngineStatus?.models?.voice ? "Connected" : "Loading"}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.yolo ? "#16a34a" : "#ca8a04" }} />
+                  <b>YOLO:</b> {mlEngineStatus?.models?.yolo ? "Connected" : "Loading"}
+                </span>
+              </div>
+
+              {/* Real ML Detection Signals */}
+              <div style={{ display: "grid", gap: "10px" }}>
+                
+                {/* 1. Eye Attention Analysis (eye_detection_model.keras) */}
+                <div style={{ padding: "10px", background: "#FAF5F2", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}>
+                      <Eye size={13} color="var(--maroon)" /> Eye / Attention
+                    </span>
+                    {mlTelemetry?.eye_detection?.available ? (
+                      <span style={{
+                        fontSize: "10px",
+                        fontWeight: "700",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: mlTelemetry.eye_detection.label === "looking_at_screen" ? "#dcfce7" : "#fef3c7",
+                        color: mlTelemetry.eye_detection.label === "looking_at_screen" ? "#166534" : "#92400e"
+                      }}>
+                        {mlTelemetry.eye_detection.label === "looking_at_screen" ? "Normal (Screen)" : mlTelemetry.eye_detection.label === "looking_away" ? "Looking Away" : "Eyes Closed"}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "10px", color: "var(--muted)" }}>Waiting for frames...</span>
+                    )}
+                  </div>
+                  {mlTelemetry?.eye_detection?.confidence != null && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                      <div style={{ flex: 1, height: "4px", background: "#e5e7eb", borderRadius: "2px", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${Math.round(mlTelemetry.eye_detection.confidence * 100)}%`,
+                            background: mlTelemetry.eye_detection.label === "looking_at_screen" ? "#16a34a" : "#f59e0b",
+                            transition: "width 0.3s ease"
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: "10px", fontWeight: "700", color: "var(--ink)", minWidth: "32px", textAlign: "right" }}>
+                        {Math.round(mlTelemetry.eye_detection.confidence * 100)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Voice Activity Detection (voice_detector.pkl) */}
+                <div style={{ padding: "10px", background: "#FAF5F2", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}>
+                      <Mic2 size={13} color="var(--maroon)" /> Voice Analysis
+                    </span>
+                    {mlTelemetry?.voice_detection?.available ? (
+                      <span style={{
+                        fontSize: "10px",
+                        fontWeight: "700",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: mlTelemetry.voice_detection.is_voice ? "#dcfce7" : "#f3f4f6",
+                        color: mlTelemetry.voice_detection.is_voice ? "#166534" : "#4b5563"
+                      }}>
+                        {mlTelemetry.voice_detection.is_voice ? "Voice Detected" : "Non-voice / Quiet"}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "10px", color: "var(--muted)" }}>Live Stream Ready</span>
+                    )}
+                  </div>
+                  {mlTelemetry?.voice_detection?.confidence != null && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                      <div style={{ flex: 1, height: "4px", background: "#e5e7eb", borderRadius: "2px", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${Math.round(mlTelemetry.voice_detection.confidence * 100)}%`,
+                            background: mlTelemetry.voice_detection.is_voice ? "#16a34a" : "#9ca3af",
+                            transition: "width 0.3s ease"
+                          }}
+                        />
+                      </div>
+                      <span style={{ fontSize: "10px", fontWeight: "700", color: "var(--ink)", minWidth: "32px", textAlign: "right" }}>
+                        {Math.round(mlTelemetry.voice_detection.confidence * 100)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Object & Person Detection (yolo11n.pt) */}
+                <div style={{ padding: "10px", background: "#FAF5F2", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}>
+                      <Users size={13} color="var(--maroon)" /> Person & Devices (YOLO)
+                    </span>
+                    {mlTelemetry?.object_detection?.available ? (
+                      <span style={{
+                        fontSize: "10px",
+                        fontWeight: "700",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: mlTelemetry.object_detection.persons === 1 ? "#dcfce7" : mlTelemetry.object_detection.persons > 1 ? "#fee2e2" : "#fef3c7",
+                        color: mlTelemetry.object_detection.persons === 1 ? "#166534" : mlTelemetry.object_detection.persons > 1 ? "#991b1b" : "#92400e"
+                      }}>
+                        {mlTelemetry.object_detection.persons === 1 ? "1 Person in Frame" : mlTelemetry.object_detection.persons > 1 ? `⚠ ${mlTelemetry.object_detection.persons} People Detected` : "⚠ No Face Detected"}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: "10px", color: "var(--muted)" }}>Analyzing camera...</span>
+                    )}
+                  </div>
+                  {mlTelemetry?.object_detection?.objects && mlTelemetry.object_detection.objects.length > 0 && (
+                    <div style={{ fontSize: "10px", color: "#b91c1c", marginTop: "4px", fontWeight: "600" }}>
+                      Detected items: {mlTelemetry.object_detection.objects.join(", ")}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Debug / Telemetry Diagnostics Toggle */}
+              <div style={{ marginTop: "10px", textAlign: "right" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDebugPanel(!showDebugPanel)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    fontSize: "10px",
+                    color: "var(--muted)",
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    padding: 0
+                  }}
+                >
+                  {showDebugPanel ? "Hide Diagnostics" : "ML Diagnostics"}
+                </button>
+              </div>
+
+              {/* Collapsible Debug Panel */}
+              {showDebugPanel && (
+                <div style={{ marginTop: "8px", padding: "8px", background: "#f8fafc", borderRadius: "6px", fontSize: "9px", fontFamily: "monospace", color: "#334155", border: "1px solid #e2e8f0" }}>
+                  <div><b>Telemetry Inferences:</b> {mlRequestCount}</div>
+                  <div><b>Last Analyzed:</b> {lastInferenceTime || "None"}</div>
+                  <div><b>Realtime State:</b> {channelRef.current ? "Active" : "Disconnected"}</div>
+                  {mlTelemetry?.eye_detection?.probabilities && (
+                    <div style={{ marginTop: "4px" }}>
+                      <b>Eye Probabilities:</b> {JSON.stringify(mlTelemetry.eye_detection.probabilities)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Live Room Chart (Integrated directly above Interview Progress) */}
             <div className="card" style={{ marginBottom: "16px", padding: "16px", borderRadius: "14px" }}>
               <div className="card-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
