@@ -18,6 +18,8 @@ def startup_event():
 
 origins = list(set([
     settings.frontend_url,
+    "https://confira-ai.vercel.app",
+    "https://confira-ai.onrender.com",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:5174",

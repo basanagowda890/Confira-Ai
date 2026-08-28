@@ -10,6 +10,7 @@ import joblib
 import numpy as np
 from PIL import Image
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ml_service")
 
 # Global singleton
@@ -19,9 +20,16 @@ _ml_lock = threading.Lock()
 
 class MLService:
     def __init__(self):
-        self.base_dir = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "ml_models")
-        )
+        # Resolve potential model directories
+        possible_dirs = [
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "ml_models")),
+            os.path.abspath(os.path.join(os.getcwd(), "backend", "ml_models")),
+            os.path.abspath(os.path.join(os.getcwd(), "ml_models")),
+            os.path.join(os.path.dirname(__file__), "ml_models"),
+        ]
+        self.base_dir = next((d for d in possible_dirs if os.path.exists(d)), possible_dirs[0])
+        logger.info("MLService initialized with model directory: %s", self.base_dir)
+
         self.voice_model = None
         self.eye_model = None
         self.yolo_model = None
@@ -40,66 +48,83 @@ class MLService:
             1: "voice",
         }
 
+        # Cache latest telemetry per interview_id
+        self.latest_telemetry: Dict[str, Dict[str, Any]] = {}
         self.load_lock = threading.Lock()
         self._initialized = False
+
+    def _find_model_file(self, filename: str, subpaths: Optional[List[str]] = None) -> Optional[str]:
+        candidates = [os.path.join(self.base_dir, filename)]
+        if subpaths:
+            for sub in subpaths:
+                candidates.append(os.path.join(self.base_dir, sub, filename))
+        # Also check current working directory
+        candidates.append(os.path.join(os.getcwd(), "backend", "ml_models", filename))
+        candidates.append(os.path.join(os.getcwd(), "ml_models", filename))
+
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        return None
 
     def initialize(self):
         with self.load_lock:
             if self._initialized:
                 return
+            logger.info("=== ML Service: Starting Model Initialization ===")
             self._load_voice_model()
             self._load_eye_model()
             self._load_yolo_model()
             self._initialized = True
+            logger.info(
+                "=== ML Service Initialization Complete: Eye=%s, Voice=%s, YOLO=%s ===",
+                "loaded" if self.eye_loaded else "failed",
+                "loaded" if self.voice_loaded else "failed",
+                "loaded" if self.yolo_loaded else "failed"
+            )
 
     def _load_voice_model(self):
-        voice_path = os.path.join(self.base_dir, "voice_detector.pkl")
-        if not os.path.exists(voice_path):
-            voice_path = os.path.join(self.base_dir, "ai_interview_models", "voice_detector.pkl")
-
-        if os.path.exists(voice_path):
+        voice_path = self._find_model_file("voice_detector.pkl", ["ai_interview_models"])
+        if voice_path and os.path.exists(voice_path):
             try:
                 self.voice_model = joblib.load(voice_path)
                 self.voice_loaded = True
                 logger.info("Voice Detector model loaded successfully from %s", voice_path)
             except Exception as e:
-                logger.error("Failed to load voice detector model: %s", e)
+                logger.error("Failed to load voice detector model from %s: %s", voice_path, e)
                 self.voice_loaded = False
         else:
-            logger.warning("Voice detector model file not found at %s", voice_path)
+            logger.warning("Voice detector model file not found in %s", self.base_dir)
             self.voice_loaded = False
 
     def _load_eye_model(self):
-        eye_path = os.path.join(self.base_dir, "eye_detection_model.keras")
-        if not os.path.exists(eye_path):
-            eye_path = os.path.join(self.base_dir, "ai_interview_models", "eye_detection_model.keras")
-
-        if os.path.exists(eye_path):
+        eye_path = self._find_model_file("eye_detection_model.keras", ["ai_interview_models"])
+        if eye_path and os.path.exists(eye_path):
             try:
                 import keras
                 self.eye_model = keras.models.load_model(eye_path)
                 self.eye_loaded = True
                 logger.info("Eye Detection model loaded successfully from %s", eye_path)
             except Exception as e:
-                logger.error("Failed to load eye detection model: %s", e)
+                logger.error("Failed to load eye detection model from %s: %s", eye_path, e)
                 self.eye_loaded = False
         else:
-            logger.warning("Eye detection model file not found at %s", eye_path)
+            logger.warning("Eye detection model file not found in %s", self.base_dir)
             self.eye_loaded = False
 
     def _load_yolo_model(self):
-        yolo_path = os.path.join(self.base_dir, "yolo11n.pt")
-        if os.path.exists(yolo_path):
+        yolo_path = self._find_model_file("yolo11n.pt", ["yolo_raw"])
+        if yolo_path and os.path.exists(yolo_path):
             try:
                 from ultralytics import YOLO
                 self.yolo_model = YOLO(yolo_path)
                 self.yolo_loaded = True
                 logger.info("YOLO11n model loaded successfully from %s", yolo_path)
             except Exception as e:
-                logger.error("Failed to load YOLO model: %s", e)
+                logger.error("Failed to load YOLO model from %s: %s", yolo_path, e)
                 self.yolo_loaded = False
         else:
-            logger.warning("YOLO model file not found at %s", yolo_path)
+            logger.warning("YOLO model file not found in %s", self.base_dir)
             self.yolo_loaded = False
 
     def get_status(self) -> Dict[str, Any]:
@@ -107,6 +132,9 @@ class MLService:
             self.initialize()
         return {
             "status": "ok" if (self.voice_loaded or self.eye_loaded or self.yolo_loaded) else "unavailable",
+            "eye_model": "loaded" if self.eye_loaded else "unavailable",
+            "voice_model": "loaded" if self.voice_loaded else "unavailable",
+            "yolo_model": "loaded" if self.yolo_loaded else "unavailable",
             "models": {
                 "eye": self.eye_loaded,
                 "voice": self.voice_loaded,
@@ -132,16 +160,15 @@ class MLService:
             import soundfile as sf
             import librosa
 
-            # Decode audio from bytes (supports WAV, OGG, WebM/Raw PCM)
+            # Decode audio from bytes
             try:
                 with io.BytesIO(audio_bytes) as bio:
                     audio_data, sr = sf.read(bio)
             except Exception:
-                # Fallback to librosa if soundfile direct decode needs wrapper
                 with io.BytesIO(audio_bytes) as bio:
                     audio_data, sr = librosa.load(bio, sr=sample_rate)
 
-            # Convert multi-channel to mono
+            # Convert to mono
             if audio_data.ndim > 1:
                 audio_data = np.mean(audio_data, axis=1)
 
@@ -279,7 +306,7 @@ class MLService:
             elif person_count == 0:
                 alerts.append("face_not_detected")
 
-            # Check secondary devices/objects of interest
+            # Check secondary devices/objects
             prohibited_objects = {"cell phone", "laptop", "tv", "book"}
             found_prohibited = [o for o in detected_objects if o in prohibited_objects]
             if found_prohibited:
@@ -333,7 +360,7 @@ class MLService:
         elif eye_result.get("label") == "eyes_closed" and eye_result.get("confidence", 0) > 0.80:
             all_alerts.append("eyes_closed")
 
-        return {
+        telemetry = {
             "interview_id": interview_id,
             "candidate_id": candidate_id,
             "timestamp": ts,
@@ -342,6 +369,13 @@ class MLService:
             "object_detection": yolo_result,
             "alerts": all_alerts
         }
+
+        # Cache latest result for instant recovery/polling fallback
+        self.latest_telemetry[interview_id] = telemetry
+        return telemetry
+
+    def get_latest_telemetry(self, interview_id: str) -> Optional[Dict[str, Any]]:
+        return self.latest_telemetry.get(interview_id)
 
 
 def get_ml_service() -> MLService:

@@ -301,8 +301,50 @@ export default function CandidateLiveInterview() {
 
   // ── Background ML Telemetry Capture (Eye, Voice, YOLO) ───────────────────
   const offscreenCanvasRef = useRef(null);
-  const audioRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
+  const mediaRecorderRef = useRef(null);
+  const latestAudioB64Ref = useRef(null);
+
+  // Setup periodic audio recorder snippet
+  useEffect(() => {
+    if (!localStreamRef.current) return;
+    const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (!audioTrack || !audioTrack.enabled || typeof MediaRecorder === "undefined") return;
+
+    let recorder = null;
+    try {
+      const audioStream = new MediaStream([audioTrack]);
+      recorder = new MediaRecorder(audioStream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "" });
+      
+      recorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            latestAudioB64Ref.current = reader.result;
+          };
+          reader.readAsDataURL(e.data);
+        }
+      };
+
+      recorder.start();
+      // Restart recorder every 3 seconds to slice chunks
+      const sliceInterval = setInterval(() => {
+        if (recorder && recorder.state === "recording") {
+          recorder.stop();
+          recorder.start();
+        }
+      }, 3000);
+
+      mediaRecorderRef.current = recorder;
+      return () => {
+        clearInterval(sliceInterval);
+        if (recorder && recorder.state !== "inactive") {
+          recorder.stop();
+        }
+      };
+    } catch (e) {
+      console.debug("Audio recorder setup for ML telemetry:", e?.message);
+    }
+  }, [mic]);
 
   useEffect(() => {
     if (!interview?.id || !localVideoRef.current) return;
@@ -330,20 +372,23 @@ export default function CandidateLiveInterview() {
         const ctx = canvas.getContext("2d");
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageB64 = canvas.toDataURL("image/jpeg", 0.75);
+        const audioB64 = latestAudioB64Ref.current || null;
 
         // Run real ML analysis on backend
         const res = await api.post(`/interviews/${interview.id}/ml/analyze`, {
           image_b64: imageB64,
+          audio_b64: audioB64,
           candidate_id: profile?.id,
           timestamp: new Date().toISOString()
         });
 
-        if (res?.data?.data && channelRef.current) {
+        const telemetry = res?.data || res;
+        if (telemetry && telemetry.eye_detection && channelRef.current) {
           // Broadcast real ML result to interviewer live room
           channelRef.current.send({
             type: "broadcast",
             event: "ml_telemetry",
-            payload: res.data.data
+            payload: telemetry
           });
         }
       } catch (err) {

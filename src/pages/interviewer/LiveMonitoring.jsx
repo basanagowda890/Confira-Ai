@@ -116,23 +116,67 @@ export default function LiveMonitoring() {
   const [lastInferenceTime, setLastInferenceTime] = useState(null);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
-  // Fetch ML Engine Health on mount
+  // Fetch ML Engine Health on mount & periodically
   useEffect(() => {
+    let mounted = true;
     async function checkMlHealth() {
       try {
         const res = await api.get("/ml/health");
-        if (res?.data?.data) {
-          setMlEngineStatus(res.data.data);
+        const data = res?.data || res;
+        if (mounted && data?.models) {
+          setMlEngineStatus(data);
         }
       } catch (e) {
         console.debug("ML health check:", e?.message);
-        setMlEngineStatus({ eye: false, voice: false, yolo: false, status: "unavailable" });
+        if (mounted) {
+          setMlEngineStatus({ eye: false, voice: false, yolo: false, status: "unavailable" });
+        }
       }
     }
     checkMlHealth();
-    const interval = setInterval(checkMlHealth, 15000);
-    return () => clearInterval(interval);
+    const interval = setInterval(checkMlHealth, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
   }, []);
+
+  // Polling fallback for ML Telemetry (guarantees real-time updates even if WebSocket blips)
+  useEffect(() => {
+    if (!selectedInterview?.id) return;
+    let mounted = true;
+
+    async function fetchLatestTelemetry() {
+      try {
+        const res = await api.get(`/interviews/${selectedInterview.id}/ml/latest`);
+        const data = res?.data || res;
+        if (mounted && data && data.eye_detection) {
+          setMlTelemetry(data);
+          setMlRequestCount(c => c + 1);
+          setLastInferenceTime(new Date().toLocaleTimeString());
+        }
+      } catch {
+        // Non-blocking poll
+      }
+    }
+
+    fetchLatestTelemetry();
+    const pollInterval = setInterval(fetchLatestTelemetry, 3500);
+    return () => {
+      mounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [selectedInterview?.id]);
+
+  // Dynamic connection badge state
+  const mlConnectionStatus = useMemo(() => {
+    if (mlTelemetry) return "CONNECTED";
+    if (mlEngineStatus?.models?.eye && mlEngineStatus?.models?.voice && mlEngineStatus?.models?.yolo) {
+      return "READY";
+    }
+    if (mlEngineStatus?.status === "unavailable") return "DEGRADED";
+    return "CONNECTING";
+  }, [mlTelemetry, mlEngineStatus]);
 
   // Video refs
   const localVideoRef = useRef(null);
@@ -1218,24 +1262,24 @@ export default function LiveMonitoring() {
                   <BrainCircuit size={16} color="var(--maroon)" />
                   <h3 style={{ margin: 0, fontSize: "13px", fontWeight: "700" }}>AI / ML Live Monitoring</h3>
                 </div>
-                <Badge tone={mlTelemetry ? "success" : "info"}>
-                  <span className="live-dot" /> {mlTelemetry ? "STREAMING" : "CONNECTING"}
+                <Badge tone={mlConnectionStatus === "CONNECTED" ? "success" : mlConnectionStatus === "READY" ? "info" : mlConnectionStatus === "DEGRADED" ? "warning" : "default"}>
+                  <span className="live-dot" /> {mlConnectionStatus}
                 </Badge>
               </div>
 
               {/* Model Health Indicators */}
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "#FAF5F2", borderRadius: "8px", fontSize: "10px", marginBottom: "12px", border: "1px solid var(--line)" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.eye ? "#16a34a" : "#ca8a04" }} />
-                  <b>Eye:</b> {mlEngineStatus?.models?.eye ? "Connected" : "Loading"}
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.eye ? "#16a34a" : mlEngineStatus?.status === "unavailable" ? "#ef4444" : "#ca8a04" }} />
+                  <b>Eye:</b> {mlEngineStatus?.models?.eye ? "Ready" : mlEngineStatus?.status === "unavailable" ? "Offline" : "Connecting"}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.voice ? "#16a34a" : "#ca8a04" }} />
-                  <b>Voice:</b> {mlEngineStatus?.models?.voice ? "Connected" : "Loading"}
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.voice ? "#16a34a" : mlEngineStatus?.status === "unavailable" ? "#ef4444" : "#ca8a04" }} />
+                  <b>Voice:</b> {mlEngineStatus?.models?.voice ? "Ready" : mlEngineStatus?.status === "unavailable" ? "Offline" : "Connecting"}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.yolo ? "#16a34a" : "#ca8a04" }} />
-                  <b>YOLO:</b> {mlEngineStatus?.models?.yolo ? "Connected" : "Loading"}
+                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: mlEngineStatus?.models?.yolo ? "#16a34a" : mlEngineStatus?.status === "unavailable" ? "#ef4444" : "#ca8a04" }} />
+                  <b>YOLO:</b> {mlEngineStatus?.models?.yolo ? "Ready" : mlEngineStatus?.status === "unavailable" ? "Offline" : "Connecting"}
                 </span>
               </div>
 

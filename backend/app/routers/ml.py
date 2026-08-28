@@ -32,6 +32,18 @@ def ml_health():
     return {"success": True, "data": status}
 
 
+@router.get("/interviews/{interview_id}/ml/latest")
+def get_latest_interview_telemetry(
+    interview_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Retrieve latest cached ML telemetry for an interview."""
+    interview_for_user(interview_id, user)
+    service = get_ml_service()
+    telemetry = service.get_latest_telemetry(interview_id)
+    return {"success": True, "data": telemetry}
+
+
 @router.post("/interviews/{interview_id}/ml/analyze")
 def analyze_telemetry(
     interview_id: str,
