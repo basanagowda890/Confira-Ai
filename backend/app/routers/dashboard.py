@@ -244,6 +244,26 @@ def interviewer_dashboard(user: dict = Depends(require_role("interviewer"))):
     except Exception:
         all_candidates = []
 
+    # Recent notifications for interviewer
+    try:
+        notes = db.table("notifications").select("*").eq("user_id", uid).order("created_at", desc=True).limit(6).execute().data or []
+    except Exception:
+        notes = []
+
+    # Enriched recent applications
+    recent_apps = []
+    if apps:
+        try:
+            cand_map = {c["id"]: c for c in all_candidates}
+            job_map = {j["id"]: j for j in jobs}
+            for app_item in sorted(apps, key=lambda x: x.get("created_at", ""), reverse=True)[:6]:
+                app_copy = dict(app_item)
+                app_copy["candidate"] = cand_map.get(app_item.get("candidate_id"), {})
+                app_copy["job"] = job_map.get(app_item.get("job_id"), {})
+                recent_apps.append(app_copy)
+        except Exception:
+            recent_apps = apps[:6]
+
     funnel = [
         {"stage": "Applied", "count": len(apps)},
         {"stage": "Screening", "count": len([a for a in apps if a.get("status") == "screening"])},
@@ -265,5 +285,7 @@ def interviewer_dashboard(user: dict = Depends(require_role("interviewer"))):
             "open_alerts": open_alerts,
             "funnel": funnel,
             "total_applications": len(apps),
+            "notifications": notes,
+            "recent_applications": recent_apps,
         },
     }

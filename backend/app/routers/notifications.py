@@ -64,12 +64,17 @@ def send_notification(body: SendNotificationInput, user: dict = Depends(get_curr
         "link": body.link or default_link,
     }
 
+    client = admin_client()
     try:
-        res = admin_client().table("notifications").insert(data).execute()
+        res = client.table("notifications").insert(data).execute()
         created = res.data[0]
     except Exception:
-        res = admin_client().table("notifications").upsert(data, on_conflict="event_key").execute()
-        created = res.data[0]
+        existing = client.table("notifications").select("id").eq("event_key", event_key).execute().data
+        if existing:
+            res = client.table("notifications").update(data).eq("id", existing[0]["id"]).execute()
+            created = res.data[0]
+        else:
+            raise api_error(500, "Could not deliver notification.", "NOTIFICATION_FAILED")
 
     return {"success": True, "data": created}
 

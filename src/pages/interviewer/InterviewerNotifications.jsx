@@ -261,11 +261,17 @@ export default function InterviewerNotifications() {
                             alignItems: "center",
                             gap: "6px",
                             fontSize: "12px",
-                            padding: "6px 12px",
+                            padding: "6px 14px",
                             fontWeight: "700"
                           }}
                         >
-                          <CalendarDays size={13} /> Schedule Interview <ArrowRight size={13} />
+                          {n.type === "job_app" || n.type === "job_application" ? (
+                            <><CalendarDays size={13} /> Schedule Interview <ArrowRight size={13} /></>
+                          ) : n.link.includes("interview") || n.type === "interview" ? (
+                            <><CalendarDays size={13} /> View Interview <ArrowRight size={13} /></>
+                          ) : (
+                            <><ArrowRight size={13} /> View Details</>
+                          )}
                         </Link>
                       </div>
                     )}

@@ -156,23 +156,66 @@ export default function InterviewerDashboard() {
         <section className="card">
           <div className="card-head">
             <div>
-              <h3>Hiring pipeline</h3>
-              <p>Active applicants across your positions</p>
+              <h3>Recent Submissions & Notifications</h3>
+              <p>Applications and candidate updates</p>
             </div>
-            <Badge tone="info">{dashboard?.total_applications ?? 0} total</Badge>
+            <Link className="text-link" to="/interviewer/notifications">View all</Link>
           </div>
-          <div className="funnel">
-            {funnel.map(f => {
-              const widthPct = Math.max(10, Math.round((f.count / maxFunnelCount) * 100));
-              return (
-                <div key={f.stage}>
-                  <span>{f.stage}</span>
-                  <b>{f.count}</b>
-                  <div className="funnel-bar" style={{ width: `${widthPct}%` }} />
+          {dashboard?.notifications && dashboard.notifications.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {dashboard.notifications.slice(0, 4).map(item => (
+                <div
+                  key={item.id}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: "10px",
+                    background: item.read_at ? "var(--cream)" : "rgba(169, 45, 52, 0.06)",
+                    border: "1px solid var(--line)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    justifyContent: "space-between"
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <b style={{ fontSize: "12px", color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {item.title}
+                      </b>
+                      {!item.read_at && (
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#A92D34", flex: "none" }} />
+                      )}
+                    </div>
+                    <p style={{ margin: "2px 0 0", fontSize: "11px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.message}
+                    </p>
+                  </div>
+                  {item.link && (
+                    <Link
+                      to={item.link}
+                      className="btn btn-outline btn-sm"
+                      style={{ fontSize: "11px", padding: "4px 8px", flex: "none" }}
+                    >
+                      Action
+                    </Link>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="funnel">
+              {funnel.map(f => {
+                const widthPct = Math.max(10, Math.round((f.count / maxFunnelCount) * 100));
+                return (
+                  <div key={f.stage}>
+                    <span>{f.stage}</span>
+                    <b>{f.count}</b>
+                    <div className="funnel-bar" style={{ width: `${widthPct}%` }} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
 

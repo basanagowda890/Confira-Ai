@@ -146,16 +146,48 @@ def update(interview_id: str, body: InterviewUpdate, user: dict = Depends(requir
 def delete(interview_id: str, user: dict = Depends(require_role("interviewer"))):
     item = interview_for_user(interview_id, user)
     if item["interviewer_id"] != user["id"]:
-        raise api_error(403, "Only the interviewer can cancel this interview.", "OWNERSHIP_FORBIDDEN")
-    admin_client().table("interviews").update({"status": "cancelled"}).eq("id", interview_id).execute()
-    notify(
-        item["candidate_id"],
-        f"interview:{interview_id}:cancelled",
-        "Interview cancelled",
-        f"Your interview '{item.get('title', 'Interview')}' has been cancelled by the interviewer.",
-        "/candidate/interviews",
-    )
-    return {"success": True}
+        raise api_error(403, "Only the interviewer can delete this interview.", "OWNERSHIP_FORBIDDEN")
+
+    # Notify candidate of interview cancellation/removal
+    try:
+        notify(
+            item["candidate_id"],
+            f"interview:{interview_id}:cancelled",
+            "Interview Schedule Cancelled",
+            f"Your interview schedule for '{item.get('title', 'Interview')}' has been removed by the interviewer.",
+            "/candidate/interviews",
+        )
+    except Exception:
+        pass
+
+    # Clean up any related child records
+    try:
+        admin_client().table("reports").delete().eq("interview_id", interview_id).execute()
+    except Exception:
+        pass
+    try:
+        admin_client().table("interview_answers").delete().eq("interview_id", interview_id).execute()
+    except Exception:
+        pass
+    try:
+        admin_client().table("interview_questions").delete().eq("interview_id", interview_id).execute()
+    except Exception:
+        pass
+    try:
+        admin_client().table("interview_results").delete().eq("interview_id", interview_id).execute()
+    except Exception:
+        pass
+    try:
+        admin_client().table("monitoring_events").delete().eq("interview_id", interview_id).execute()
+    except Exception:
+        pass
+
+    try:
+        admin_client().table("interviews").delete().eq("id", interview_id).execute()
+    except Exception:
+        admin_client().table("interviews").update({"status": "cancelled"}).eq("id", interview_id).execute()
+
+    return {"success": True, "message": "Interview schedule deleted successfully."}
 
 @router.post("/{interview_id}/start")
 def start(interview_id: str, user: dict = Depends(require_role("interviewer"))):

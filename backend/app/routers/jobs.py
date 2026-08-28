@@ -79,21 +79,24 @@ def apply(job_id: str, user: dict = Depends(get_current_user)):
     except Exception as e:
         raise api_error(409, f"Application could not be created: {str(e)}", "APPLICATION_FAILED")
 
-    candidate_name = user.get("profile", {}).get("full_name") or user.get("email") or "A candidate"
+    candidate_profile = user.get("profile") or {}
+    candidate_name = candidate_profile.get("full_name") or user.get("email") or "A candidate"
+    headline = candidate_profile.get("headline")
+    candidate_desc = f"{candidate_name} ({headline})" if headline else candidate_name
     job_title = job.get("title", "Position")
     import time
     ts = int(time.time())
 
-    # Notify candidate
+    # 1. Notify Candidate of successful application submission
     notify(
         user["id"],
         f"application:{job_id}:{user['id']}:{ts}",
-        "Application submitted",
-        f"Your application for '{job_title}' was submitted successfully. The hiring team has been notified to schedule your interview.",
+        f"Application Submitted: {job_title}",
+        f"Your application for '{job_title}' was submitted successfully. The company and hiring team have been notified.",
         "/candidate/jobs",
     )
 
-    # Notify interviewer who created the position or all registered interviewers
+    # 2. Notify the Interviewer/Company who posted the job (or all company interviewers)
     interviewers_to_notify = []
     if job.get("created_by"):
         interviewers_to_notify.append(job["created_by"])
@@ -105,8 +108,8 @@ def apply(job_id: str, user: dict = Depends(get_current_user)):
         notify(
             interviewer_id,
             f"job_app:{job_id}:{user['id']}:{ts}",
-            "New Candidate Application",
-            f"{candidate_name} has applied for '{job_title}'. Click to schedule an interview.",
+            f"New Candidate Application: {job_title}",
+            f"{candidate_desc} has applied for '{job_title}'. Click to review profile and schedule an interview.",
             f"/interviewer/interviews?schedule=true&candidate={user['id']}&job={job_id}",
         )
 

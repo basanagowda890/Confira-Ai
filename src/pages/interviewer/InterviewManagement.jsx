@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { CalendarDays, Plus, Clock3, Video, Users, MoreHorizontal, ChevronLeft, ChevronRight, Ban, PlayCircle, ThumbsUp, ThumbsDown, CheckCircle2, PhoneOff, X } from "lucide-react";
+import { CalendarDays, Plus, Clock3, Video, Users, MoreHorizontal, ChevronLeft, ChevronRight, Ban, PlayCircle, ThumbsUp, ThumbsDown, CheckCircle2, PhoneOff, X, Trash2 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import SectionTitle from "../../components/SectionTitle";
 import Badge from "../../components/Badge";
@@ -182,6 +182,20 @@ export default function InterviewManagement() {
     setTimeout(() => setToast(""), 2500);
   }
 
+  async function deleteInterview(id, title) {
+    const name = title || "this interview schedule";
+    if (!window.confirm(`Are you sure you want to permanently delete "${name}"? This will remove the session from your schedule and candidate portal.`)) return;
+    try {
+      await api.delete(`/interviews/${id}`);
+      setToast("Interview schedule deleted successfully.");
+      setMenu(null);
+      await loadData();
+    } catch (error) {
+      setToast(error.message || "Failed to delete interview schedule.");
+    }
+    setTimeout(() => setToast(""), 3000);
+  }
+
   async function submitDecisionRecord() {
     if (!decisionModal.row) return;
     setDecisionModal(prev => ({ ...prev, loading: true }));
@@ -332,6 +346,15 @@ export default function InterviewManagement() {
                         </Link>
                         <button
                           className="icon-btn"
+                          aria-label={`Delete schedule ${row.title}`}
+                          title="Delete interview schedule"
+                          onClick={() => deleteInterview(row.id, row.title)}
+                          style={{ color: "#ef4444" }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                        <button
+                          className="icon-btn"
                           aria-label={`Open actions for ${row.title}`}
                           title="More actions"
                           onClick={() => setMenu(menu === row.id ? null : row.id)}
@@ -353,7 +376,7 @@ export default function InterviewManagement() {
                             zIndex: 10,
                             display: "flex",
                             flexDirection: "column",
-                            minWidth: "140px",
+                            minWidth: "160px",
                             overflow: "hidden",
                           }}
                         >
@@ -389,9 +412,29 @@ export default function InterviewManagement() {
                               <CheckCircle2 size={14} /> End & Record Decision
                             </button>
                           )}
+                          {row.status !== "cancelled" && (
+                            <button
+                              type="button"
+                              onClick={() => cancelInterview(row.id)}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "10px 14px",
+                                background: "none",
+                                border: "none",
+                                color: "#f59e0b",
+                                cursor: "pointer",
+                                fontSize: "13px",
+                                textAlign: "left",
+                              }}
+                            >
+                              <Ban size={14} /> Cancel Session
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => cancelInterview(row.id)}
+                            onClick={() => deleteInterview(row.id, row.title)}
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -405,7 +448,7 @@ export default function InterviewManagement() {
                               textAlign: "left",
                             }}
                           >
-                            <Ban size={14} /> Cancel Session
+                            <Trash2 size={14} /> Delete Schedule
                           </button>
                         </div>
                       )}
