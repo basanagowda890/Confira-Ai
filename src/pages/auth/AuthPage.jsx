@@ -24,16 +24,32 @@ export default function AuthPage() {
       const result = isRegistering
         ? await register({ email, password, fullName, role })
         : await login(email, password);
+
+      if (!result) {
+        throw new Error("Unable to complete authentication. Please try again.");
+      }
+
       if (result.confirmationRequired) {
-        setNotice("Account created. Please confirm your email, then log in.");
+        setNotice("Account created. Please check your email to confirm your account, then log in.");
         setIsRegistering(false);
         return;
       }
-      const userRole = result.profile?.role || result.role;
+
+      const userRole = result.profile?.role || result.role || role || "candidate";
       navigate(userRole === "candidate" ? "/candidate/dashboard" : "/interviewer/dashboard", { replace: true });
     } catch (error) {
-      const message = error.message || "We could not sign you in. Please try again.";
-      setNotice(message.includes("Invalid login") ? "Invalid email or password." : message);
+      const message = error?.message || "We could not sign you in. Please try again.";
+      if (
+        message.toLowerCase().includes("invalid login") ||
+        message.toLowerCase().includes("invalid_credentials") ||
+        message.toLowerCase().includes("invalid credentials")
+      ) {
+        setNotice("Invalid email or password.");
+      } else if (message.toLowerCase().includes("email not confirmed")) {
+        setNotice("Please confirm your email address before signing in.");
+      } else {
+        setNotice(message);
+      }
     } finally {
       setLoading(false);
     }

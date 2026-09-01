@@ -4,7 +4,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
+const rawApiBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8001")).trim().replace(/^['"]|['"]$/g, "");
+const API_BASE = rawApiBase ? rawApiBase.replace(/\/+$/, "").replace(/\/api$/, "") : "";
 
 // ── Speech Recognition factory (cross-browser) ─────────────────────────────
 function createRecognizer() {

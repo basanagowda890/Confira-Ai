@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
+const rawBase = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? "" : "http://localhost:8001")).trim().replace(/^['"]|['"]$/g, "");
+const baseUrl = rawBase ? rawBase.replace(/\/+$/, "").replace(/\/api$/, "") : "";
 
 export class ApiError extends Error {
   constructor(message, status = 0, code = "API_ERROR") {
@@ -31,7 +32,8 @@ async function send(path, options = {}, token = null) {
     headers.set("Content-Type", "application/json");
   }
 
-  const url = `${baseUrl}/api${path.startsWith("/") ? path : `/${path}`}`;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = baseUrl ? `${baseUrl}/api${cleanPath}` : `/api${cleanPath}`;
   return fetch(url, {
     ...options,
     headers,
@@ -47,7 +49,7 @@ async function request(path, options = {}) {
     response = await send(path, options, token);
   } catch (err) {
     // Only true network / connection failures reach here
-    throw new ApiError("Could not connect to the backend. Make sure the API is running on port 8001.", 0, "NETWORK_ERROR");
+    throw new ApiError("Could not connect to the server. Please check your connection and try again.", 0, "NETWORK_ERROR");
   }
 
   // Handle 401 unauthenticated with automatic token refresh attempt
