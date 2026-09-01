@@ -260,17 +260,16 @@ export default function Settings() {
         </div>
 
         <form onSubmit={saveInterviewerProfile}>
-          <div className="profile-photo-row" style={{ display: "flex", alignItems: "center", gap: "20px", marginBottom: "20px", paddingBottom: "18px", borderBottom: "1px solid var(--line)" }}>
-            <label className="profile-photo-picker" title="Click to upload interviewer photo" style={{ cursor: "pointer", position: "relative" }}>
-              <div className="profile-photo" style={{ width: "80px", height: "80px", borderRadius: "50%", overflow: "hidden", border: "2.5px solid var(--maroon)", boxShadow: "0 4px 14px rgba(0,0,0,0.1)" }}>
+          <div className="profile-photo-row">
+            <label className="profile-photo-picker" title="Click to upload interviewer photo">
+              <div className="profile-photo">
                 <img
                   src={currentPhoto}
                   alt={profileForm.full_name || "Interviewer profile"}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               </div>
-              <span style={{ position: "absolute", bottom: 0, right: 0, background: "var(--maroon)", color: "#fff", width: "26px", height: "26px", borderRadius: "50%", display: "grid", placeItems: "center", border: "2px solid #fff" }}>
-                <Camera size={13} />
+              <span className="profile-photo-badge">
+                <Camera size={11} />
               </span>
               <input
                 type="file"
@@ -385,7 +384,7 @@ export default function Settings() {
         <div className="card-head">
           <div>
             <h3><Sun size={18} /> Website Appearance & Theme</h3>
-            <p>Choose your workspace theme: Light, Obsidian Dark, or automatically match your System.</p>
+            <p>Choose your workspace theme: Light or Obsidian Dark.</p>
           </div>
           <Badge tone="info">Theme</Badge>
         </div>

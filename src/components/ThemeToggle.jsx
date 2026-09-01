@@ -1,8 +1,8 @@
-import { Sun, Moon, Laptop } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
 export default function ThemeToggle({ variant = "topbar" }) {
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   if (variant === "cards") {
     return (
@@ -36,21 +36,6 @@ export default function ThemeToggle({ variant = "topbar" }) {
           </div>
           {theme === "dark" && <span className="theme-active-dot" />}
         </button>
-
-        <button
-          type="button"
-          className={`theme-card-option ${theme === "system" ? "active" : ""}`}
-          onClick={() => setTheme("system")}
-        >
-          <div className="theme-icon system">
-            <Laptop size={20} />
-          </div>
-          <div>
-            <b>System Default</b>
-            <p>Auto-sync with OS appearance ({resolvedTheme})</p>
-          </div>
-          {theme === "system" && <span className="theme-active-dot" />}
-        </button>
       </div>
     );
   }
@@ -76,15 +61,7 @@ export default function ThemeToggle({ variant = "topbar" }) {
       >
         <Moon size={15} />
       </button>
-      <button
-        type="button"
-        className={`theme-btn ${theme === "system" ? "active" : ""}`}
-        onClick={() => setTheme("system")}
-        title={`Sync with System Default (Currently: ${resolvedTheme})`}
-        aria-label="System default theme"
-      >
-        <Laptop size={15} />
-      </button>
     </div>
   );
 }
+

@@ -155,15 +155,14 @@ export default function CandidateProfile() {
           </div>
           <div className="profile-photo-row">
             <label className="profile-photo-picker" title="Choose profile photo">
-              <div className="profile-photo" style={{ overflow: "hidden" }}>
+              <div className="profile-photo">
                 <img
                   src={avatarPreview || avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"}
                   alt={`${name} profile`}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
-                <span><Camera size={12} /></span>
               </div>
-              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={e => uploadAvatar(e.target.files?.[0])} />
+              <span className="profile-photo-badge"><Camera size={11} /></span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" style={{ display: "none" }} onChange={e => uploadAvatar(e.target.files?.[0])} />
             </label>
             <div>
               <b>Profile photo</b>

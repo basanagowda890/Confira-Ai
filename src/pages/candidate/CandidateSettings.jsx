@@ -3,10 +3,8 @@ import {
   Camera,
   Code,
   Download,
-  Laptop,
   LockKeyhole,
   Mic,
-  Moon,
   RefreshCw,
   Save,
   Shield,
@@ -25,7 +23,7 @@ import ThemeToggle from "../../components/ThemeToggle";
 import { useAuth } from "../../context/AuthContext";
 
 const DEFAULT_SETTINGS = {
-  theme: "system", // 'system' | 'dark' | 'light'
+  theme: "light", // 'light' | 'dark'
   compactMode: false,
   soundAlerts: true,
   autoJoinCamera: true,
@@ -151,7 +149,7 @@ export default function CandidateSettings() {
         <div className="card-head">
           <div>
             <h3><Sun size={18} /> Website Appearance & Theme</h3>
-            <p>Select your interface style: Light, Obsidian Dark, or automatically synchronized with your System.</p>
+            <p>Select your interface style: Light or Obsidian Dark.</p>
           </div>
           <Badge tone="info">Theme</Badge>
         </div>
