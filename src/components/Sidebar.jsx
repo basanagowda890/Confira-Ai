@@ -37,7 +37,7 @@ export default function Sidebar({ role = "candidate", unreadCount = 0 }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
-        <Logo dark />
+        <Logo />
         <span className="role-pill">{role === "candidate" ? "Candidate" : "Interviewer"}</span>
       </div>
 

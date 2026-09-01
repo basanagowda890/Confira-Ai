@@ -117,13 +117,15 @@ export default function Jobs() {
     if (!window.confirm(`Are you sure you want to permanently delete the position "${job.title}"? This cannot be undone.`)) {
       return;
     }
+    setMenu(null);
     try {
       await api.delete(`/jobs/${job.id}`);
+      setJobs(prev => prev.filter(j => j.id !== job.id));
       setToast("Position deleted successfully.");
-      setMenu(null);
       await loadJobs();
     } catch (error) {
       setToast(error.message || "Failed to delete position.");
+      await loadJobs();
     }
     setTimeout(() => setToast(""), 2500);
   }

@@ -367,7 +367,7 @@ def save_recommendation(body: RecommendationInput, user: dict = Depends(require_
     if not interview_id:
         raise api_error(400, "An interview session is required to record a formal hiring recommendation.", "INTERVIEW_REQUIRED")
 
-    rec_val = body.recommendation.lower()
+    rec_val = (body.recommendation or body.decision or "maybe").lower()
     if rec_val in {"recommended", "strong_hire"}:
         rec_val = "strong_hire"
     elif rec_val in {"hire"}:

@@ -12,7 +12,7 @@ export default function CandidateProfile() {
   const [saving, setSaving] = useState(false);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [skillInput, setSkillInput] = useState("");
-  const { profile, avatarUrl, refreshAvatar, refreshProfile, updateProfile } = useAuth();
+  const { profile, avatarUrl, refreshAvatar, refreshProfile, setDirectAvatar, updateProfile } = useAuth();
   const name = profile?.full_name || "Candidate";
   const [form, setForm] = useState({ full_name: "", phone: "", location: "", headline: "", bio: "", skills: [] });
 
@@ -67,17 +67,32 @@ export default function CandidateProfile() {
     const formData = new FormData();
     formData.append("file", nextFile);
     try {
-      await api.upload("/uploads/avatar", formData);
+      const res = await api.upload("/uploads/avatar", formData);
+      if (res?.url) {
+        setDirectAvatar(res.url);
+      }
       await refreshAvatar();
-      await refreshProfile();
-      setAvatarPreview("");
-      setToast("Profile photo uploaded successfully");
+      setToast("Profile photo uploaded and updated everywhere!");
     } catch (error) {
-      setToast(error.message);
+      setToast(error.message || "Failed to upload photo.");
     } finally {
+      setAvatarPreview("");
       URL.revokeObjectURL(previewUrl);
     }
-    setTimeout(() => setToast(""), 2200);
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  async function deleteAvatar() {
+    try {
+      await api.delete("/uploads/avatar");
+      setDirectAvatar("");
+      setAvatarPreview("");
+      await refreshAvatar();
+      setToast("Profile photo removed.");
+    } catch (error) {
+      setToast(error.message || "Failed to remove photo.");
+    }
+    setTimeout(() => setToast(""), 2500);
   }
 
   async function uploadResume(nextFile) {
@@ -153,7 +168,28 @@ export default function CandidateProfile() {
             <div>
               <b>Profile photo</b>
               <p>Click the photo to change it.</p>
-              <small>JPG, PNG or WEBP · Max 5 MB</small>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
+                <small>JPG, PNG or WEBP · Max 5 MB</small>
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={deleteAvatar}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#ef4444",
+                      fontSize: "11px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "3px",
+                      padding: 0
+                    }}
+                  >
+                    <Trash2 size={11} /> Remove
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <form className="form-grid" onSubmit={save}>

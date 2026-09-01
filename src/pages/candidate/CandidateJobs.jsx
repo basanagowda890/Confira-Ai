@@ -81,6 +81,20 @@ export default function CandidateJobs() {
     }
   }
 
+  async function withdraw(app) {
+    if (!window.confirm(`Are you sure you want to withdraw your application for "${app.jobs?.title || "this position"}"?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/candidate/applications/${app.id}`);
+      setToast("Application withdrawn successfully.");
+      setApplications(prev => prev.filter(a => a.id !== app.id));
+      await load();
+    } catch (error) {
+      setToast(error.message || "Failed to withdraw application.");
+    }
+  }
+
   const filteredJobs = jobs.filter(j =>
     `${j.title} ${j.department || ""} ${j.location || ""}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -158,9 +172,20 @@ export default function CandidateJobs() {
                 )}
 
                 {application ? (
-                  <Badge tone={application.status === "interview" ? "success" : application.status === "shortlisted" ? "info" : "warning"}>
-                    Status: {application.status}
-                  </Badge>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Badge tone={application.status === "interview" ? "success" : application.status === "shortlisted" ? "info" : "warning"}>
+                      Status: {application.status}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => withdraw(application)}
+                      className="btn btn-outline btn-sm"
+                      style={{ padding: "3px 8px", fontSize: "11px", color: "#ef4444", borderColor: "#fca5a5" }}
+                      title="Withdraw application"
+                    >
+                      Withdraw
+                    </button>
+                  </div>
                 ) : (
                   <button
                     className="btn btn-primary"
@@ -206,6 +231,7 @@ export default function CandidateJobs() {
                   <th>Department</th>
                   <th>Applied On</th>
                   <th>Current Status</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,6 +247,16 @@ export default function CandidateJobs() {
                       <Badge tone={app.status === "interview" || app.status === "selected" ? "success" : app.status === "shortlisted" ? "info" : "warning"}>
                         {app.status}
                       </Badge>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => withdraw(app)}
+                        className="btn btn-outline btn-sm"
+                        style={{ padding: "4px 8px", fontSize: "11px", color: "#ef4444", borderColor: "#fca5a5" }}
+                      >
+                        Withdraw
+                      </button>
                     </td>
                   </tr>
                 ))}

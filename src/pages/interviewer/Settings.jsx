@@ -55,7 +55,7 @@ export default function Settings() {
   const [avatarPreview, setAvatarPreview] = useState("");
   const [settings, setSettings] = useState(DEFAULT_INTERVIEWER_SETTINGS);
   
-  const { profile, avatarUrl, refreshAvatar, refreshProfile, updateProfile } = useAuth();
+  const { profile, avatarUrl, refreshAvatar, refreshProfile, setDirectAvatar, updateProfile } = useAuth();
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
@@ -113,15 +113,18 @@ export default function Settings() {
     formData.append("file", file);
 
     try {
-      await api.upload("/uploads/avatar", formData);
+      const res = await api.upload("/uploads/avatar", formData);
+      if (res?.url) {
+        setDirectAvatar(res.url);
+      }
       await refreshAvatar();
-      await refreshProfile();
-      setToast("Profile photo updated successfully!");
+      setToast("Profile photo updated and saved everywhere!");
     } catch (err) {
       setToast(err.message || "Failed to upload profile photo.");
-      setAvatarPreview("");
     } finally {
+      setAvatarPreview("");
       setAvatarLoading(false);
+      URL.revokeObjectURL(preview);
       setTimeout(() => setToast(""), 3000);
     }
   }
@@ -130,9 +133,9 @@ export default function Settings() {
   async function removeAvatar() {
     try {
       await api.delete("/uploads/avatar");
+      setDirectAvatar("");
       setAvatarPreview("");
       await refreshAvatar();
-      await refreshProfile();
       setToast("Profile photo removed.");
     } catch (err) {
       setToast(err.message || "Failed to remove photo.");

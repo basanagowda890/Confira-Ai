@@ -72,8 +72,10 @@ class QuestionInput(BaseModel):
 class RecommendationInput(BaseModel):
     candidate_id: str
     interview_id: str | None = None
-    recommendation: str
+    recommendation: str | None = None
+    decision: str | None = None
     notes: str | None = None
+    job_id: str | None = None
 
 class MonitoringEventInput(BaseModel):
     event_type: str
@@ -107,12 +109,5 @@ class SendNotificationInput(BaseModel):
 class PracticeTestSubmitInput(BaseModel):
     attempt_id: str
     answers: list[dict[str, Any]] = []
-
-class RecommendationInput(BaseModel):
-    candidate_id: str
-    decision: Literal["recommended", "review", "reject"]
-    notes: str = ""
-    job_id: str | None = None
-    interview_id: str | None = None
 
 

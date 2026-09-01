@@ -445,6 +445,7 @@ export default function Candidates() {
             <input
               type="date"
               value={form.date}
+              min={new Date().toISOString().split("T")[0]}
               onChange={e => setForm({ ...form, date: e.target.value })}
               required
             />
@@ -458,6 +459,33 @@ export default function Candidates() {
               required
             />
           </label>
+
+          {/* Quick Time Slot Selector */}
+          <div className="span-2" style={{ marginTop: "-6px" }}>
+            <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: "700", display: "block", marginBottom: "6px" }}>
+              Quick Time Slots:
+            </span>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {[
+                { label: "09:00 AM", value: "09:00" },
+                { label: "10:00 AM", value: "10:00" },
+                { label: "11:30 AM", value: "11:30" },
+                { label: "02:00 PM", value: "14:00" },
+                { label: "03:30 PM", value: "15:30" },
+                { label: "05:00 PM", value: "17:00" }
+              ].map(slot => (
+                <button
+                  key={slot.value}
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, time: slot.value }))}
+                  className={`btn btn-sm ${form.time === slot.value ? "btn-primary" : "btn-outline"}`}
+                  style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "6px" }}
+                >
+                  {slot.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <label>
             Duration
             <select

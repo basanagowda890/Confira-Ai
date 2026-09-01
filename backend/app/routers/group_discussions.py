@@ -185,6 +185,8 @@ def get_discussion(discussion_id: str, user: dict = Depends(get_current_user)):
 def update_status(discussion_id: str, body: dict, user: dict = Depends(require_role("interviewer"))):
     db = admin_client()
     new_status = body.get("status")
+    if new_status == "ended":
+        new_status = "completed"
     if new_status not in ["scheduled", "live", "paused", "completed", "cancelled"]:
         raise api_error(422, "Invalid status value.", "VALIDATION_ERROR")
 
@@ -328,3 +330,183 @@ def post_message(discussion_id: str, body: dict, user: dict = Depends(get_curren
             "message": text,
             "created_at": datetime.now(timezone.utc).isoformat()
         }}
+
+@router.post("/{discussion_id}/start")
+def start_discussion(discussion_id: str, user: dict = Depends(require_role("interviewer"))):
+    db = admin_client()
+    disc = fetch_maybe_single(db.table("group_discussions").select("*").eq("id", discussion_id))
+    if not disc:
+        raise api_error(404, "Group discussion not found.", "NOT_FOUND")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_payload = {
+        "status": "live",
+        "started_at": disc.get("started_at") or now_iso
+    }
+    try:
+        updated = db.table("group_discussions").update(update_payload).eq("id", discussion_id).execute().data
+    except Exception:
+        updated = [{"id": discussion_id, **update_payload}]
+
+    return {"success": True, "data": updated[0] if updated else update_payload}
+
+@router.post("/{discussion_id}/end")
+def end_discussion(discussion_id: str, user: dict = Depends(require_role("interviewer"))):
+    db = admin_client()
+    disc = fetch_maybe_single(db.table("group_discussions").select("*").eq("id", discussion_id))
+    if not disc:
+        raise api_error(404, "Group discussion not found.", "NOT_FOUND")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_payload = {
+        "status": "completed",
+        "ended_at": now_iso
+    }
+    try:
+        updated = db.table("group_discussions").update(update_payload).eq("id", discussion_id).execute().data
+    except Exception:
+        updated = [{"id": discussion_id, **update_payload}]
+
+    return {"success": True, "data": updated[0] if updated else update_payload}
+
+@router.get("/{discussion_id}/transcripts")
+def get_transcripts(discussion_id: str, user: dict = Depends(get_current_user)):
+    db = admin_client()
+    try:
+        res = db.table("group_discussion_transcripts").select("*,profiles:candidate_id(full_name,avatar_url)").eq("discussion_id", discussion_id).order("timestamp", desc=False).execute()
+        transcripts = res.data or []
+    except Exception:
+        # Fallback to messages table or in-memory
+        transcripts = []
+    return {"success": True, "data": transcripts}
+
+@router.post("/{discussion_id}/transcripts", status_code=201)
+def post_transcript(discussion_id: str, body: dict, user: dict = Depends(get_current_user)):
+    db = admin_client()
+    text = (body.get("transcript") or body.get("text") or "").strip()
+    if not text:
+        return {"success": True, "data": None}
+
+    candidate_id = body.get("candidate_id") or user["id"]
+    speaker_name = body.get("speaker_name") or user["profile"].get("full_name") or "Candidate"
+    
+    entry = {
+        "id": str(uuid.uuid4()),
+        "discussion_id": discussion_id,
+        "candidate_id": candidate_id,
+        "speaker_name": speaker_name,
+        "text": text,
+        "timestamp": body.get("timestamp") or datetime.now(timezone.utc).isoformat(),
+        "duration_seconds": body.get("duration_seconds", 0)
+    }
+
+    try:
+        db.table("group_discussion_transcripts").insert(entry).execute()
+    except Exception:
+        # If table not yet migrated, save as a transcript message in group_discussion_messages
+        try:
+            db.table("group_discussion_messages").insert({
+                "discussion_id": discussion_id,
+                "sender_id": candidate_id,
+                "sender_name": speaker_name,
+                "message": text,
+                "message_type": "transcript"
+            }).execute()
+        except Exception:
+            pass
+
+    return {"success": True, "data": entry}
+
+@router.post("/{discussion_id}/analyze")
+def analyze_gd(discussion_id: str, body: dict = None, user: dict = Depends(require_role("interviewer"))):
+    from app.services.ai_service import analyze_group_discussion
+    db = admin_client()
+    
+    disc = fetch_maybe_single(db.table("group_discussions").select("*").eq("id", discussion_id))
+    if not disc:
+        raise api_error(404, "Group discussion not found.", "NOT_FOUND")
+
+    topic = disc.get("topic") or "General Technical Topic"
+
+    # Get members
+    members = []
+    try:
+        members_raw = db.table("group_discussion_members").select("candidate_id,profiles:candidate_id(id,full_name,avatar_url)").eq("discussion_id", discussion_id).execute().data or []
+        for m in members_raw:
+            prof = m.get("profiles") or {}
+            members.append({
+                "candidate_id": m.get("candidate_id"),
+                "full_name": prof.get("full_name") or "Candidate",
+                "avatar_url": prof.get("avatar_url")
+            })
+    except Exception:
+        members = []
+
+    # Get transcripts
+    transcripts_by_cand = {}
+    try:
+        raw_t = db.table("group_discussion_transcripts").select("*").eq("discussion_id", discussion_id).order("timestamp").execute().data or []
+        for t in raw_t:
+            cid = t.get("candidate_id")
+            if cid:
+                transcripts_by_cand.setdefault(cid, []).append(t)
+    except Exception:
+        pass
+
+    # If payload provided custom candidate turns/metrics from frontend session
+    client_candidates = (body or {}).get("candidates") or []
+    candidates_payload = []
+
+    if client_candidates:
+        for cc in client_candidates:
+            cid = cc.get("candidate_id")
+            cand_transcripts = transcripts_by_cand.get(cid, []) or cc.get("transcripts") or []
+            candidates_payload.append({
+                "candidate_id": cid,
+                "name": cc.get("name") or cc.get("full_name") or "Candidate",
+                "speaking_turns": cc.get("speaking_turns") or len(cand_transcripts),
+                "speaking_time_seconds": cc.get("speaking_time_seconds") or 0,
+                "transcripts": cand_transcripts
+            })
+    else:
+        for m in members:
+            cid = m["candidate_id"]
+            cand_transcripts = transcripts_by_cand.get(cid, [])
+            candidates_payload.append({
+                "candidate_id": cid,
+                "name": m["full_name"],
+                "speaking_turns": len(cand_transcripts),
+                "speaking_time_seconds": sum(int(t.get("duration_seconds", 5)) for t in cand_transcripts),
+                "transcripts": cand_transcripts
+            })
+
+    # Run AI evaluation
+    analysis_result = analyze_group_discussion(topic, candidates_payload)
+    analysis_result["discussion_id"] = discussion_id
+    analysis_result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
+
+    # Store analysis in DB reports or group_discussions metadata
+    try:
+        db.table("reports").upsert({
+            "interview_id": discussion_id,
+            "owner_id": user["id"],
+            "content": analysis_result,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }, on_conflict="interview_id").execute()
+    except Exception:
+        pass
+
+    return {"success": True, "data": analysis_result}
+
+@router.get("/{discussion_id}/analysis")
+def get_gd_analysis(discussion_id: str, user: dict = Depends(get_current_user)):
+    db = admin_client()
+    try:
+        report = fetch_maybe_single(db.table("reports").select("*").eq("interview_id", discussion_id))
+        if report and report.get("content"):
+            return {"success": True, "data": report["content"]}
+    except Exception:
+        pass
+
+    return {"success": True, "data": None}
+

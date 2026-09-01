@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { CalendarDays, Plus, Clock3, Video, Users, MoreHorizontal, ChevronLeft, ChevronRight, Ban, PlayCircle, ThumbsUp, ThumbsDown, CheckCircle2, PhoneOff, X, Trash2 } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { CalendarDays, Plus, Clock3, Video, Users, MoreHorizontal, ChevronLeft, ChevronRight, Ban, PlayCircle, ThumbsUp, ThumbsDown, CheckCircle2, PhoneOff, X, Trash2, Calendar as CalendarIcon, Sparkles, Filter, Search } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import SectionTitle from "../../components/SectionTitle";
 import Badge from "../../components/Badge";
@@ -30,6 +30,8 @@ export default function InterviewManagement() {
   const [menu, setMenu] = useState(null);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [rows, setRows] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [candidates, setCandidates] = useState([]);
@@ -80,16 +82,17 @@ export default function InterviewManagement() {
 
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(10, 0, 0, 0);
       const pad = n => String(n).padStart(2, "0");
-      const defaultDatetime = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`;
+      const defaultDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+      const defaultTime = "10:00";
 
       setForm({
         candidate_id: targetCandidate?.id || "",
         job_id: targetJob?.id || "",
         title: targetJob ? `${targetJob.title} — ${targetCandidate?.full_name || "Interview"}` : "Technical Interview",
         type: "technical",
-        scheduled_at: defaultDatetime,
+        date: defaultDate,
+        time: defaultTime,
         duration_minutes: 60,
         instructions: "Please be ready with a quiet environment and working camera.",
       });
@@ -98,35 +101,125 @@ export default function InterviewManagement() {
     }
   }, [searchParams, candidates, jobs, setSearchParams]);
 
+  const today = useMemo(() => new Date(), []);
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
   const monthName = calendarDate.toLocaleString("en-US", { month: "long" });
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const interviewsByDay = rows.reduce((result, row) => {
-    const date = new Date(row.scheduled_at);
-    if (!Number.isNaN(date.getTime())) {
-      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      result[key] = (result[key] || 0) + 1;
+  const formatDateKey = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  // Group interviews by date key
+  const interviewsByDate = useMemo(() => {
+    const map = {};
+    rows.forEach(row => {
+      if (!row.scheduled_at) return;
+      const d = new Date(row.scheduled_at);
+      if (isNaN(d.getTime())) return;
+      const key = formatDateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      if (!map[key]) map[key] = [];
+      map[key].push(row);
+    });
+    return map;
+  }, [rows]);
+
+  const selectedDateKey = formatDateKey(year, month, selectedDay);
+  const selectedDayInterviews = interviewsByDate[selectedDateKey] || [];
+
+  // Generate complete 35/42 calendar matrix
+  const calendarCells = useMemo(() => {
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const cells = [];
+
+    // Trailing days from previous month
+    for (let i = firstWeekday - 1; i >= 0; i--) {
+      const dayNum = daysInPrevMonth - i;
+      const prevDate = new Date(year, month - 1, dayNum);
+      const key = formatDateKey(prevDate.getFullYear(), prevDate.getMonth(), dayNum);
+      cells.push({
+        day: dayNum,
+        year: prevDate.getFullYear(),
+        month: prevDate.getMonth(),
+        isOtherMonth: true,
+        key,
+        events: interviewsByDate[key] || []
+      });
     }
-    return result;
-  }, {});
 
-  const selectedInterviewCount = interviewsByDay[`${year}-${month}-${selectedDay}`] || 0;
+    // Days in current month
+    for (let d = 1; d <= daysInCurrentMonth; d++) {
+      const key = formatDateKey(year, month, d);
+      const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
+      const isSelected = selectedDay === d;
+      cells.push({
+        day: d,
+        year,
+        month,
+        isOtherMonth: false,
+        isToday,
+        isSelected,
+        key,
+        events: interviewsByDate[key] || []
+      });
+    }
+
+    // Leading days from next month
+    const remaining = (cells.length % 7 === 0) ? 0 : 7 - (cells.length % 7);
+    for (let n = 1; n <= remaining; n++) {
+      const nextDate = new Date(year, month + 1, n);
+      const key = formatDateKey(nextDate.getFullYear(), nextDate.getMonth(), n);
+      cells.push({
+        day: n,
+        year: nextDate.getFullYear(),
+        month: nextDate.getMonth(),
+        isOtherMonth: true,
+        key,
+        events: interviewsByDate[key] || []
+      });
+    }
+
+    return cells;
+  }, [year, month, selectedDay, interviewsByDate, today]);
 
   function changeMonth(offset) {
     setCalendarDate(new Date(year, month + offset, 1));
     setSelectedDay(1);
   }
 
+  function jumpToToday() {
+    const now = new Date();
+    setCalendarDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    setSelectedDay(now.getDate());
+  }
+
+  function openScheduleForDate(y, m, d) {
+    const pad = n => String(n).padStart(2, "0");
+    const targetDate = `${y}-${pad(m + 1)}-${pad(d)}`;
+    const defaultTime = "10:00";
+    const defaultJob = jobs[0];
+    const defaultCandidate = candidates[0];
+
+    setForm({
+      candidate_id: defaultCandidate?.id || "",
+      job_id: defaultJob?.id || "",
+      title: defaultJob ? `${defaultJob.title} — ${defaultCandidate?.full_name || "Interview"}` : "Technical Interview",
+      type: "technical",
+      date: targetDate,
+      time: defaultTime,
+      duration_minutes: 60,
+      instructions: "Please be ready with a quiet environment and working camera.",
+    });
+    setOpen(true);
+  }
+
   function openSchedule() {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(10, 0, 0, 0);
-    // Format YYYY-MM-DDTHH:mm for datetime-local
     const pad = n => String(n).padStart(2, "0");
-    const defaultDatetime = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`;
+    const defaultDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+    const defaultTime = "10:00";
 
     const defaultJob = jobs[0];
     const defaultCandidate = candidates[0];
@@ -136,7 +229,8 @@ export default function InterviewManagement() {
       job_id: defaultJob?.id || "",
       title: defaultJob ? `${defaultJob.title} — ${defaultCandidate?.full_name || "Interview"}` : "Technical Interview",
       type: "technical",
-      scheduled_at: defaultDatetime,
+      date: defaultDate,
+      time: defaultTime,
       duration_minutes: 60,
       instructions: "Please be ready with a quiet environment and working camera.",
     });
@@ -145,18 +239,25 @@ export default function InterviewManagement() {
 
   async function schedule(event) {
     event.preventDefault();
-    if (!form.candidate_id || !form.job_id || !form.scheduled_at) {
-      setToast("Please fill in all required scheduling details.");
+    if (!form.candidate_id || !form.job_id || !form.date || !form.time) {
+      setToast("Please fill in all required scheduling details including date and time.");
       return;
     }
 
     setSaving(true);
     try {
-      const dateObj = new Date(form.scheduled_at);
+      const formattedTime = form.time.length === 5 ? `${form.time}:00` : form.time;
+      const dateObj = new Date(`${form.date}T${formattedTime}`);
       const scheduledIso = !isNaN(dateObj.getTime()) ? dateObj.toISOString() : new Date().toISOString();
+
       await api.post("/interviews", {
-        ...form,
+        candidate_id: form.candidate_id,
+        job_id: form.job_id,
+        title: form.title,
+        type: form.type,
         scheduled_at: scheduledIso,
+        duration_minutes: form.duration_minutes,
+        instructions: form.instructions,
       });
       setOpen(false);
       setToast("Interview scheduled and candidate notified successfully!");
@@ -217,13 +318,29 @@ export default function InterviewManagement() {
     }
   }
 
+  // Filtered rows for the directory table
+  const filteredRows = useMemo(() => {
+    return rows.filter(row => {
+      if (filterStatus !== "all" && row.status !== filterStatus) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const cand = row.candidate || row.profiles || {};
+        const nameMatch = (cand.full_name || "").toLowerCase().includes(q);
+        const titleMatch = (row.title || "").toLowerCase().includes(q);
+        const jobMatch = (row.jobs?.title || "").toLowerCase().includes(q);
+        if (!nameMatch && !titleMatch && !jobMatch) return false;
+      }
+      return true;
+    });
+  }, [rows, filterStatus, searchQuery]);
+
   return (
     <div>
       <Toast message={toast} onClose={() => setToast("")} />
       <SectionTitle
         eyebrow="INTERVIEWS"
-        title="Interview management"
-        description="Schedule sessions, assign candidate slots, and monitor live evaluations."
+        title="Interview Management"
+        description="Schedule sessions, manage interactive calendar slots, and review live candidate evaluations."
         action={
           <button className="btn btn-primary" onClick={openSchedule} disabled={!candidates.length || !jobs.length}>
             <Plus size={16} /> Schedule interview
@@ -231,56 +348,254 @@ export default function InterviewManagement() {
         }
       />
 
-      <section className="card company-calendar">
-        <div className="calendar-header">
-          <div>
-            <h3>Interview calendar</h3>
-            <p>{monthName} {year} · Select a day to review scheduled sessions.</p>
-          </div>
-          <div className="calendar-nav">
-            <button className="icon-btn" aria-label="Previous month" title="Previous month" onClick={() => changeMonth(-1)}>
-              <ChevronLeft size={16} />
-            </button>
-            <b>{monthName} {year}</b>
-            <button className="icon-btn" aria-label="Next month" title="Next month" onClick={() => changeMonth(1)}>
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-        <div className="calendar-weekdays">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-            <span key={day}>{day}</span>
-          ))}
-        </div>
-        <div className="calendar-month-grid">
-          {Array.from({ length: firstWeekday }, (_, index) => (
-            <span className="calendar-blank" key={`blank-${index}`} />
-          ))}
-          {Array.from({ length: daysInMonth }, (_, index) => {
-            const day = index + 1;
-            const event = interviewsByDay[`${year}-${month}-${day}`];
-            return (
-              <button
-                type="button"
-                className={`calendar-date ${selectedDay === day ? "selected" : ""} ${event ? "has-event" : ""}`}
-                onClick={() => setSelectedDay(day)}
-                key={day}
-              >
-                <b>{day}</b>
-                {event && <small>{event} interview{event > 1 ? "s" : ""}</small>}
+      {/* Compact Interactive Calendar & Day Agenda Split View */}
+      <div className="calendar-section-split">
+        {/* Left: Compact Calendar Card */}
+        <section className="calendar-card">
+          <div className="calendar-toolbar">
+            <div className="calendar-title-wrap">
+              <h2>{monthName} {year}</h2>
+              <button className="btn btn-outline btn-sm" onClick={jumpToToday} style={{ padding: "4px 8px", fontSize: "11px" }}>
+                Today
               </button>
-            );
-          })}
-        </div>
-        <p className="calendar-selection">
-          <CalendarDays size={15} />{" "}
-          {selectedInterviewCount
-            ? `${selectedInterviewCount} interview(s) on ${monthName} ${selectedDay}, ${year}`
-            : `No interviews scheduled on ${monthName} ${selectedDay}, ${year}`}
-        </p>
-      </section>
+            </div>
 
+            <div className="calendar-controls">
+              <button
+                className="icon-btn"
+                aria-label="Previous month"
+                title="Previous month"
+                onClick={() => changeMonth(-1)}
+                style={{ width: "30px", height: "30px" }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                className="icon-btn"
+                aria-label="Next month"
+                title="Next month"
+                onClick={() => changeMonth(1)}
+                style={{ width: "30px", height: "30px" }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+
+          {/* 7-Day Grid Headers */}
+          <div className="calendar-grid">
+            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(day => (
+              <div key={day} className="calendar-header-cell">
+                {day}
+              </div>
+            ))}
+
+            {/* Calendar Day Cells */}
+            {calendarCells.map((cell, idx) => {
+              const isSel = !cell.isOtherMonth && selectedDay === cell.day;
+              const hasEvents = cell.events.length > 0;
+
+              return (
+                <div
+                  key={`${cell.key}-${idx}`}
+                  className={`calendar-day-cell ${cell.isOtherMonth ? "other-month" : ""} ${cell.isToday ? "today" : ""} ${isSel ? "selected" : ""}`}
+                  onClick={() => {
+                    if (cell.isOtherMonth) {
+                      setCalendarDate(new Date(cell.year, cell.month, 1));
+                    }
+                    setSelectedDay(cell.day);
+                  }}
+                >
+                  <div className="calendar-cell-top">
+                    <span className="calendar-day-number">{cell.day}</span>
+                    <button
+                      className="calendar-add-quick-btn"
+                      title={`Schedule interview on ${cell.year}-${cell.month + 1}-${cell.day}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openScheduleForDate(cell.year, cell.month, cell.day);
+                      }}
+                    >
+                      <Plus size={10} />
+                    </button>
+                  </div>
+
+                  {/* Compact Event Dots */}
+                  {hasEvents && (
+                    <div className="calendar-events-dots">
+                      {cell.events.slice(0, 3).map((evt) => (
+                        <span
+                          key={evt.id}
+                          className={`calendar-event-dot-mini ${evt.status || "scheduled"}`}
+                          title={`${evt.scheduled_at ? new Date(evt.scheduled_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""} - ${evt.title}`}
+                        />
+                      ))}
+                      {cell.events.length > 3 && (
+                        <span style={{ fontSize: "8px", fontWeight: 800, color: "var(--deep-blue)" }}>
+                          +{cell.events.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Right: Selected Day Agenda */}
+        <section className="calendar-day-agenda-box">
+          <div className="calendar-day-agenda-header">
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <CalendarIcon size={16} color="var(--deep-blue)" />
+              <b style={{ fontSize: "14px", color: "var(--navy)" }}>
+                {new Date(year, month, selectedDay).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+              </b>
+              <span className="badge badge-info" style={{ marginLeft: "2px", fontSize: "10px", padding: "2px 8px" }}>
+                {selectedDayInterviews.length} {selectedDayInterviews.length === 1 ? "session" : "sessions"}
+              </span>
+            </div>
+
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => openScheduleForDate(year, month, selectedDay)}
+              style={{ padding: "5px 12px", fontSize: "11px" }}
+            >
+              <Plus size={13} /> Add Slot
+            </button>
+          </div>
+
+          {selectedDayInterviews.length > 0 ? (
+            <div className="calendar-agenda-grid">
+              {selectedDayInterviews.map((evt, idx) => {
+                const cand = evt.candidate || evt.profiles || candidates.find(c => c.id === evt.candidate_id) || {};
+                const candName = cand.full_name || evt.title || "Candidate";
+                const d = new Date(evt.scheduled_at);
+                const timeString = !isNaN(d.getTime()) ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Scheduled";
+
+                return (
+                  <div key={evt.id} className="calendar-agenda-card">
+                    <div className="calendar-agenda-top">
+                      <div className="person-cell">
+                        <span className="avatar" style={{ overflow: "hidden", width: "32px", height: "32px", fontSize: "10px" }}>
+                          <img
+                            src={getPhoto(cand, idx)}
+                            alt={candName}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        </span>
+                        <div>
+                          <b style={{ fontSize: "13px", color: "var(--navy)" }}>{candName}</b>
+                          <small style={{ color: "var(--muted)", display: "block", fontSize: "11px" }}>{evt.jobs?.title || evt.title}</small>
+                        </div>
+                      </div>
+                      <Badge tone={evt.status === "live" ? "danger" : evt.status === "completed" ? "success" : "info"}>
+                        {evt.status}
+                      </Badge>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "11px", color: "var(--muted)" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <Clock3 size={12} color="var(--deep-blue)" /> {timeString} ({evt.duration_minutes || 60}m)
+                      </span>
+                      <span>·</span>
+                      <span style={{ textTransform: "capitalize" }}>{evt.type || "Technical"} Round</span>
+                    </div>
+
+                    <div className="calendar-agenda-actions">
+                      <Link
+                        className="btn btn-primary btn-sm"
+                        to={`/interviewer/live?interview=${evt.id}`}
+                        style={{ flex: 1, padding: "5px 10px", fontSize: "11px" }}
+                      >
+                        <PlayCircle size={13} /> Open Session
+                      </Link>
+
+                      {evt.status !== "completed" && (
+                        <button
+                          className="btn btn-outline btn-sm"
+                          title="Record decision"
+                          onClick={() => {
+                            setDecisionModal({
+                              open: true,
+                              row: evt,
+                              type: "selected",
+                              feedback: "",
+                              strengths: "",
+                              weaknesses: "",
+                              score: 85,
+                              loading: false
+                            });
+                          }}
+                          style={{ padding: "5px 8px" }}
+                        >
+                          <CheckCircle2 size={13} color="#00537A" />
+                        </button>
+                      )}
+
+                      <button
+                        className="btn btn-outline btn-sm"
+                        title="Delete schedule"
+                        onClick={() => deleteInterview(evt.id, evt.title)}
+                        style={{ color: "#D9381E", padding: "5px 8px" }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: "24px 16px", textAlign: "center", background: "rgba(247, 251, 253, 0.6)", borderRadius: "12px", border: "1px dashed rgba(0,83,122,0.15)", margin: "auto 0" }}>
+              <p style={{ margin: 0, fontSize: "12px", color: "var(--muted)" }}>
+                No interviews scheduled for this date.
+              </p>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => openScheduleForDate(year, month, selectedDay)}
+                style={{ marginTop: "10px", padding: "5px 12px", fontSize: "11px" }}
+              >
+                <Plus size={12} /> Schedule on this Date
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
+
+      {/* Directory Table Section */}
       <section className="card">
+        <div className="card-head">
+          <div>
+            <h3>All Interview Sessions</h3>
+            <p>Directory of all scheduled, active, and completed candidate assessments</p>
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <div className="search-box" style={{ width: "240px" }}>
+              <Search size={15} />
+              <input
+                placeholder="Search candidate or job..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="filter-row" style={{ marginBottom: "14px" }}>
+          {["all", "scheduled", "live", "completed", "cancelled"].map(status => (
+            <button
+              key={status}
+              type="button"
+              className={`filter ${filterStatus === status ? "active" : ""}`}
+              onClick={() => setFilterStatus(status)}
+              style={{ textTransform: "capitalize" }}
+            >
+              {status} ({status === "all" ? rows.length : rows.filter(r => r.status === status).length})
+            </button>
+          ))}
+        </div>
+
         <div className="table-wrap">
           <table>
             <thead>
@@ -295,7 +610,7 @@ export default function InterviewManagement() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, idx) => {
+              {filteredRows.map((row, idx) => {
                 const candidate = row.candidate || row.profiles || candidates.find(c => c.id === row.candidate_id);
                 const candidateName = candidate?.full_name || (row.title?.includes("—") ? row.title.split("—")[1]?.trim() : "") || "Candidate";
                 const candidateEmail = candidate?.email || "";
@@ -325,10 +640,10 @@ export default function InterviewManagement() {
                     <td>
                       <span className="meta-inline">
                         <CalendarDays size={14} />
-                        {date.toLocaleString()}
+                        {!isNaN(date.getTime()) ? date.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Scheduled"}
                       </span>
                     </td>
-                    <td>{row.type}</td>
+                    <td style={{ textTransform: "capitalize" }}>{row.type}</td>
                     <td>{row.duration_minutes} min</td>
                     <td>
                       <Badge tone={row.status === "live" ? "danger" : row.status === "completed" ? "success" : "info"}>
@@ -338,7 +653,7 @@ export default function InterviewManagement() {
                     <td style={{ position: "relative" }}>
                       <div style={{ display: "flex", gap: "6px" }}>
                         <Link
-                          className="btn btn-outline"
+                          className="btn btn-outline btn-sm"
                           to={`/interviewer/live?interview=${row.id}`}
                           title="Open live interview monitoring"
                         >
@@ -349,17 +664,18 @@ export default function InterviewManagement() {
                           aria-label={`Delete schedule ${row.title}`}
                           title="Delete interview schedule"
                           onClick={() => deleteInterview(row.id, row.title)}
-                          style={{ color: "#ef4444" }}
+                          style={{ color: "#D9381E", width: "32px", height: "32px" }}
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={14} />
                         </button>
                         <button
                           className="icon-btn"
                           aria-label={`Open actions for ${row.title}`}
                           title="More actions"
                           onClick={() => setMenu(menu === row.id ? null : row.id)}
+                          style={{ width: "32px", height: "32px" }}
                         >
-                          <MoreHorizontal size={16} />
+                          <MoreHorizontal size={15} />
                         </button>
                       </div>
 
@@ -369,14 +685,15 @@ export default function InterviewManagement() {
                             position: "absolute",
                             top: "36px",
                             right: "10px",
-                            background: "#1e2238",
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            borderRadius: "8px",
-                            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-                            zIndex: 10,
+                            background: "rgba(255, 255, 255, 0.95)",
+                            backdropFilter: "blur(16px)",
+                            border: "1px solid rgba(0, 83, 122, 0.2)",
+                            borderRadius: "12px",
+                            boxShadow: "0 10px 30px rgba(1,60,88,0.18)",
+                            zIndex: 25,
                             display: "flex",
                             flexDirection: "column",
-                            minWidth: "160px",
+                            minWidth: "180px",
                             overflow: "hidden",
                           }}
                         >
@@ -403,13 +720,14 @@ export default function InterviewManagement() {
                                 padding: "10px 14px",
                                 background: "none",
                                 border: "none",
-                                color: "#10b981",
+                                color: "#00537A",
                                 cursor: "pointer",
-                                fontSize: "13px",
+                                fontSize: "12px",
+                                fontWeight: 600,
                                 textAlign: "left",
                               }}
                             >
-                              <CheckCircle2 size={14} /> End & Record Decision
+                              <CheckCircle2 size={14} color="#00537A" /> End & Record Decision
                             </button>
                           )}
                           {row.status !== "cancelled" && (
@@ -423,13 +741,14 @@ export default function InterviewManagement() {
                                 padding: "10px 14px",
                                 background: "none",
                                 border: "none",
-                                color: "#f59e0b",
+                                color: "#F5A201",
                                 cursor: "pointer",
-                                fontSize: "13px",
+                                fontSize: "12px",
+                                fontWeight: 600,
                                 textAlign: "left",
                               }}
                             >
-                              <Ban size={14} /> Cancel Session
+                              <Ban size={14} color="#F5A201" /> Cancel Session
                             </button>
                           )}
                           <button
@@ -442,13 +761,15 @@ export default function InterviewManagement() {
                               padding: "10px 14px",
                               background: "none",
                               border: "none",
-                              color: "#ef4444",
+                              color: "#D9381E",
                               cursor: "pointer",
-                              fontSize: "13px",
+                              fontSize: "12px",
+                              fontWeight: 600,
                               textAlign: "left",
+                              borderTop: "1px solid rgba(0, 83, 122, 0.08)"
                             }}
                           >
-                            <Trash2 size={14} /> Delete Schedule
+                            <Trash2 size={14} color="#D9381E" /> Delete Permanently
                           </button>
                         </div>
                       )}
@@ -456,10 +777,16 @@ export default function InterviewManagement() {
                   </tr>
                 );
               })}
+              {!filteredRows.length && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "28px" }}>
+                    <p style={{ margin: 0, color: "var(--muted)" }}>No interviews match the current filter.</p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
-        {!rows.length && <p className="empty-state">No interviews scheduled yet.</p>}
       </section>
 
       {/* Schedule Interview Modal */}
@@ -530,14 +857,52 @@ export default function InterviewManagement() {
             </select>
           </label>
           <label>
-            Date and time
+            Interview Date
             <input
-              type="datetime-local"
-              value={form.scheduled_at}
-              onChange={e => setForm({ ...form, scheduled_at: e.target.value })}
+              type="date"
+              value={form.date || ""}
+              min={new Date().toISOString().split("T")[0]}
+              onChange={e => setForm({ ...form, date: e.target.value })}
               required
             />
           </label>
+          <label>
+            Interview Time
+            <input
+              type="time"
+              value={form.time || ""}
+              onChange={e => setForm({ ...form, time: e.target.value })}
+              required
+            />
+          </label>
+
+          {/* Quick Time Slot Selector */}
+          <div className="span-2" style={{ marginTop: "-6px" }}>
+            <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: "700", display: "block", marginBottom: "6px" }}>
+              Quick Time Slots:
+            </span>
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {[
+                { label: "09:00 AM", value: "09:00" },
+                { label: "10:00 AM", value: "10:00" },
+                { label: "11:30 AM", value: "11:30" },
+                { label: "02:00 PM", value: "14:00" },
+                { label: "03:30 PM", value: "15:30" },
+                { label: "05:00 PM", value: "17:00" }
+              ].map(slot => (
+                <button
+                  key={slot.value}
+                  type="button"
+                  onClick={() => setForm(prev => ({ ...prev, time: slot.value }))}
+                  className={`btn btn-sm ${form.time === slot.value ? "btn-primary" : "btn-outline"}`}
+                  style={{ padding: "4px 10px", fontSize: "11px", borderRadius: "6px" }}
+                >
+                  {slot.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <label>
             Round
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>

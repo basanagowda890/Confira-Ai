@@ -210,12 +210,13 @@ function CandidateDashboardContent() {
         <div
           className="card"
           style={{
-            background: "linear-gradient(135deg, #1C1917, #292524)",
-            color: "#fff",
-            padding: "16px 20px",
-            borderRadius: "14px",
-            marginBottom: "18px",
-            border: "1px solid rgba(255,255,255,0.12)",
+            background: "linear-gradient(135deg, #00537A, #013C58)",
+            color: "#FFFFFF",
+            padding: "18px 22px",
+            borderRadius: "18px",
+            marginBottom: "20px",
+            border: "1px solid rgba(168, 232, 249, 0.3)",
+            boxShadow: "0 10px 30px rgba(0, 83, 122, 0.2)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -225,23 +226,21 @@ function CandidateDashboardContent() {
         >
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-              <span className="live-pill" style={{ background: upcomingGD.status === "live" ? "#ef4444" : "var(--maroon)" }}>
-                <span className="live-dot" /> {upcomingGD.status ? String(upcomingGD.status).toUpperCase() : "LIVE"} GROUP DISCUSSION
+              <span className="live-pill" style={{ background: upcomingGD.status === "live" ? "#D9381E" : "rgba(168, 232, 249, 0.25)", color: "#FFFFFF", border: "1px solid rgba(255,255,255,0.2)" }}>
+                <span className="live-dot" style={{ background: upcomingGD.status === "live" ? "#FFFFFF" : "#FFD35B" }} /> {upcomingGD.status ? String(upcomingGD.status).toUpperCase() : "LIVE"} GROUP DISCUSSION
               </span>
-              <b style={{ color: "#fff", fontSize: "15px" }}>{cleanText(upcomingGD.title)}</b>
+              <b style={{ color: "#FFFFFF", fontSize: "16px" }}>{cleanText(upcomingGD.title)}</b>
             </div>
-            <p style={{ margin: 0, color: "#E0A899", fontSize: "12px" }}>
+            <p style={{ margin: 0, color: "#A8E8F9", fontSize: "13px" }}>
               Topic: "{upcomingGD.topic || "Architecture & Problem Solving"}" · Duration: {upcomingGD.duration_minutes || 30} mins
             </p>
           </div>
 
           <Link
-            className="btn btn-primary"
+            className="btn btn-accent"
             to={`/candidate/group-discussion?discussion=${upcomingGD.id}`}
             style={{
-              background: upcomingGD.status === "live" ? "#ef4444" : "var(--maroon)",
-              borderColor: upcomingGD.status === "live" ? "#ef4444" : "var(--maroon)",
-              padding: "8px 16px"
+              padding: "9px 18px"
             }}
           >
             <Radio size={15} /> Join Group Discussion <ArrowRight size={15} />

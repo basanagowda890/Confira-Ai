@@ -107,7 +107,8 @@ async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(get_c
     if _owned_path(old_path, user["id"], "avatar") and old_path != path:
         client.storage.from_("avatars").remove([old_path])
     client.table("profiles").update({"avatar_url": path}).eq("id", user["id"]).execute()
-    return {"success": True, "path": path}
+    signed = _signed_url("avatars", path)
+    return {"success": True, "path": path, "url": signed, "expires_in": SIGNED_URL_SECONDS}
 
 
 @router.get("/avatar")

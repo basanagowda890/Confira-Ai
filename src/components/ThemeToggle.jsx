@@ -16,8 +16,8 @@ export default function ThemeToggle({ variant = "topbar" }) {
             <Sun size={20} />
           </div>
           <div>
-            <b>Light Theme</b>
-            <p>Clean terracotta & warm daylight tones</p>
+            <b>Light Glass Theme</b>
+            <p>Clean sky-blue & gold translucent surfaces</p>
           </div>
           {theme === "light" && <span className="theme-active-dot" />}
         </button>

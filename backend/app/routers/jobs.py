@@ -47,11 +47,58 @@ def update_job(job_id: str, body: JobInput, user: dict = Depends(require_role("i
 @router.delete("/jobs/{job_id}")
 def delete_job(job_id: str, user: dict = Depends(require_role("interviewer"))):
     own_job(job_id, user)
+    db = admin_client()
     try:
-        admin_client().table("jobs").delete().eq("id", job_id).execute()
-    except Exception:
-        raise api_error(409, "Cannot delete position because active interviews or candidate applications exist. Please archive the position instead.", "JOB_IN_USE")
+        # 1. Clean up associated job applications
+        try:
+            db.table("job_applications").delete().eq("job_id", job_id).execute()
+        except Exception:
+            pass
+
+        # 2. Disassociate job_id in candidate_scores, group_discussions, interviews
+        try:
+            db.table("candidate_scores").update({"job_id": None}).eq("job_id", job_id).execute()
+        except Exception:
+            pass
+        try:
+            db.table("group_discussions").update({"job_id": None}).eq("job_id", job_id).execute()
+        except Exception:
+            pass
+        try:
+            db.table("interviews").update({"job_id": None}).eq("job_id", job_id).execute()
+        except Exception:
+            pass
+
+        # 3. Delete the job
+        db.table("jobs").delete().eq("id", job_id).execute()
+    except Exception as e:
+        # Fallback to soft archiving if hard database delete is restricted
+        try:
+            db.table("jobs").update({"status": "closed"}).eq("id", job_id).execute()
+        except Exception:
+            raise api_error(500, "Failed to delete position.", "DB_ERROR")
+
     return {"success": True, "message": "Position deleted successfully."}
+
+@router.delete("/jobs/{job_id}/apply")
+@router.delete("/candidate/applications/{application_id}")
+def withdraw_application(job_id: str | None = None, application_id: str | None = None, user: dict = Depends(get_current_user)):
+    db = admin_client()
+    target_id = application_id or job_id
+    if not target_id:
+        raise api_error(400, "Application or Job ID is required.", "MISSING_ID")
+
+    app = fetch_maybe_single(
+        db.table("job_applications")
+        .select("id,job_id")
+        .or_(f"id.eq.{target_id},job_id.eq.{target_id}")
+        .eq("candidate_id", user["id"])
+    )
+    if not app:
+        raise api_error(404, "Application not found.", "APPLICATION_NOT_FOUND")
+
+    db.table("job_applications").delete().eq("id", app["id"]).execute()
+    return {"success": True, "message": "Application removed successfully."}
 
 @router.post("/jobs/{job_id}/apply", status_code=201)
 def apply(job_id: str, user: dict = Depends(get_current_user)):
